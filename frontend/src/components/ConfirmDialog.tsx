@@ -33,7 +33,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}
@@ -45,23 +45,26 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         aria-labelledby={titleId}
         aria-describedby={descId}
         tabIndex={-1}
-        className="w-full max-w-sm rounded-2xl bg-slate-900 p-5 shadow-2xl border border-slate-800 text-slate-100 outline-none"
+        className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 outline-none"
       >
         <div className="flex items-start gap-3">
           <span
             className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border ${
               tone === 'danger'
-                ? 'bg-rose-500/15 border-rose-500/30 text-rose-400'
-                : 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+                ? 'bg-rose-50 border-rose-200 text-rose-600 dark:bg-rose-500/15 dark:border-rose-500/30 dark:text-rose-400'
+                : 'bg-amber-50 border-amber-200 text-amber-600 dark:bg-amber-500/15 dark:border-amber-500/30 dark:text-amber-400'
             }`}
           >
             <ExclamationTriangleIcon className="h-5 w-5" />
           </span>
           <div className="min-w-0">
-            <h3 id={titleId} className="text-sm font-bold text-white">
+            <h3 id={titleId} className="text-sm font-bold text-slate-900 dark:text-white">
               {title}
             </h3>
-            <div id={descId} className="mt-1 text-xs text-slate-400 leading-relaxed">
+            <div
+              id={descId}
+              className="mt-1 text-xs text-slate-600 dark:text-slate-400 leading-relaxed"
+            >
               {message}
             </div>
           </div>
@@ -71,7 +74,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             type="button"
             data-autofocus
             onClick={onCancel}
-            className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white"
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
           >
             {cancelLabel}
           </button>

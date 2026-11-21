@@ -1,11 +1,63 @@
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  PlayIcon,
-  PauseIcon,
-  SpeakerWaveIcon,
-  SpeakerXMarkIcon,
-} from '@heroicons/react/24/solid';
-import type { SmartCropTrajectory } from '../types';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { PlayIcon, PauseIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from '@heroicons/react/24/solid';
+import type { FramingMode, SmartCropTrajectory } from '../types';
+
+const SMART_CROP_STATIC_STYLE: React.CSSProperties = {
+  position: 'absolute',
+  maxWidth: 'none',
+};
+
+function syncSmartCropDom(
+  video: HTMLVideoElement | null,
+  bgWrapper: HTMLDivElement | null,
+  timeSec: number,
+  trajectory: SmartCropTrajectory,
+  clipStartFallback: number,
+  containerW: number,
+  framingMode: FramingMode,
+) {
+  if (!video || !trajectory.positions?.length) return;
+  const { orig_w, orig_h, crop_w, crop_h, crop_y, positions, fps, shot_modes, fit_blur_zoom } =
+    trajectory;
+  const trajStart = trajectory.first_pts ?? trajectory.start ?? clipStartFallback;
+  const tc = timeSec - trajStart;
+  const safeFps = fps || 30;
+  const maxIndex = positions.length - 1;
+  // +0.15 memberi toleransi jitter float di batas frame tanpa menggeser frame sebelumnya.
+  const idx = Math.max(0, Math.min(maxIndex, Math.floor(tc * safeFps + 0.15)));
+  const seg = shot_modes?.find((m) => idx >= m.start && idx < m.end);
+  const isFitSeg = seg?.mode === 'fit_blur';
+
+  const safeW = containerW || 356;
+  const containerH = safeW * (772 / 356);
+
+  if (isFitSeg) {
+    const zoom = fit_blur_zoom && fit_blur_zoom > 0 ? fit_blur_zoom : 1.0;
+    const sFit = (safeW * zoom) / orig_w;
+    const fgW = orig_w * sFit;
+    const fgH = orig_h * sFit;
+    const cxOrig = (positions[idx] ?? (orig_w - crop_w) / 2) + crop_w / 2;
+    const maxFitLeft = Math.max(0, fgW - safeW);
+    const fitLeft = Math.max(0, Math.min(maxFitLeft, cxOrig * sFit - safeW / 2));
+    video.style.width = `${fgW}px`;
+    video.style.height = `${fgH}px`;
+    video.style.top = `${(containerH - fgH) / 2 - containerH * 0.05}px`;
+    video.style.left = `${-fitLeft}px`;
+  } else {
+    const s = Math.max(safeW / crop_w, containerH / crop_h);
+    const maxLeft = Math.max(0, orig_w * s - safeW);
+    const rawX = (positions[idx] ?? 0) * s;
+    const clampedX = Math.max(0, Math.min(maxLeft, rawX));
+    video.style.width = `${orig_w * s}px`;
+    video.style.height = `${orig_h * s}px`;
+    video.style.top = `${-(crop_y * s)}px`;
+    video.style.left = `${-clampedX}px`;
+  }
+
+  if (bgWrapper && framingMode === 'smart_crop') {
+    bgWrapper.style.opacity = isFitSeg ? '1' : '0';
+  }
+}
 
 /** Satu kata transkrip (detik absolut terhadap file video sumber). */
 export interface PreviewWord {
@@ -19,7 +71,6 @@ interface PhonePreviewProps {
   selectedPresetId: string;
   videoSource?: string;
   previewClip?: { start: number; end: number } | null;
-  clipTitle?: string;
   /** Kata-kata transkrip di dalam klip yang sedang dipreview (sinkron dengan video). */
   clipWords?: PreviewWord[];
   /** Trajektori smart crop (sama dengan render) bila framing smart_crop aktif. */
@@ -37,7 +88,6 @@ export const PhonePreview: React.FC<PhonePreviewProps> = ({
   selectedPresetId,
   videoSource,
   previewClip,
-  clipTitle,
   clipWords,
   smartCropTrajectory,
   isRenderedClip = false,
@@ -57,9 +107,9 @@ export const PhonePreview: React.FC<PhonePreviewProps> = ({
   const [showPlayPulse, setShowPlayPulse] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  // Panel kedua untuk mode Dual Stack (split_screen): menampilkan sisi kanan
-  // video sambil mengikuti waktu & status putar panel utama.
+  // Panel kedua untuk mode Dual Stack (split_screen) atau latar belakang Fit-Blur hybrid.
   const secondaryVideoRef = useRef<HTMLVideoElement | null>(null);
+  const hybridBgWrapperRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   // Container layar konten (tempat video dirender) untuk menghitung skala crop.
   const screenContentRef = useRef<HTMLDivElement | null>(null);
@@ -189,6 +239,35 @@ export const PhonePreview: React.FC<PhonePreviewProps> = ({
     if (previewClip && videoRef.current) {
       if (videoRef.current.currentTime >= previewClip.end) {
         videoRef.current.currentTime = previewClip.start;
+        if (smartCropActive && smartCropTrajectory) {
+          syncSmartCropDom(
+            videoRef.current,
+            hybridBgWrapperRef.current,
+            previewClip.start,
+            smartCropTrajectory,
+            previewClip.start,
+            screenContentWidth,
+            framingMode,
+          );
+        }
+        if (secondaryVideoRef.current && !secondaryVideoRef.current.seeking) {
+          try {
+            secondaryVideoRef.current.currentTime = previewClip.start;
+          } catch {
+            // metadata belum siap
+          }
+        }
+      }
+      if (!isPlaying && smartCropActive && smartCropTrajectory && previewClip) {
+        syncSmartCropDom(
+          videoRef.current,
+          hybridBgWrapperRef.current,
+          videoRef.current.currentTime || 0,
+          smartCropTrajectory,
+          previewClip.start,
+          screenContentWidth,
+          framingMode,
+        );
       }
     }
   };
@@ -246,7 +325,8 @@ export const PhonePreview: React.FC<PhonePreviewProps> = ({
 
   // ── SMART CROP LIVE PREVIEW ──
   // Aktif hanya saat framing smart_crop, ada klip range (belum rendered), dan
-  // trajektori sudah ter-fetch. Posisi frame dihitung dari waktu klip-relatif.
+  // trajektori sudah ter-fetch. Posisi frame dihitung langsung dari waktu video
+  // secara imperatif (tanpa state `currentTime` 4Hz) agar React tidak menimpa rAF.
   const smartCropActive =
     framingMode === 'smart_crop' &&
     !isRenderedClip &&
@@ -254,47 +334,132 @@ export const PhonePreview: React.FC<PhonePreviewProps> = ({
     Boolean(smartCropTrajectory) &&
     (smartCropTrajectory?.positions?.length ?? 0) > 0;
 
-  const smartCropFrameIndex = (() => {
-    if (!smartCropActive || !previewClip || !smartCropTrajectory) return 0;
-    const tc = (currentTime || 0) - previewClip.start;
-    const fps = smartCropTrajectory.fps || 30;
-    const idx = Math.round(tc * fps);
-    const maxIndex = smartCropTrajectory.positions.length - 1;
-    return Math.max(0, Math.min(maxIndex, idx));
-  })();
+  const hasHybridFitBlurSegments =
+    smartCropActive && Boolean(smartCropTrajectory?.shot_modes?.some((m) => m.mode === 'fit_blur'));
 
-  // Style video eksplisit: skala video sumber ke crop 9:16 lalu geser kiri/atas
-  // mengikuti `positions[frame]`. Menggantikan `object-cover` center statis.
-  const smartCropVideoStyle = (() => {
-    if (!smartCropActive || !smartCropTrajectory) return null;
-    const { orig_w, orig_h, crop_w, crop_h, crop_y, positions } = smartCropTrajectory;
-    const containerW = screenContentWidth || 356;
-    // Layar konten iPhone: lebar 356, tinggi 772. Gunakan rasio fixed bila tinggi belum terukur.
-    const containerH = containerW * (772 / 356);
-    // Cover-scale: crop 9:16 diisi penuh ke layar (tinggi layar dominan lebih sempit).
-    const s = Math.max(containerW / crop_w, containerH / crop_h);
-    const x = (positions[smartCropFrameIndex] ?? 0) * s;
-    const y = crop_y * s;
-    return {
-      position: 'absolute' as const,
-      top: `${-y}px`,
-      left: `${-x}px`,
-      width: `${orig_w * s}px`,
-      height: `${orig_h * s}px`,
-      // Tailwind preflight menetapkan `video { max-width: 100% }`, yang akan
-      // membatasi width eksplisit kita ke lebar layar (356px) padahal height
-      // tetap skala penuh -> video jadi sempit & melenceng. Nonaktifkan.
-      maxWidth: 'none',
+  // Set posisi awal / saat pause / resize sebelum paint, dan bersihkan style
+  // inline ketika keluar dari mode smart_crop supaya tidak mengunci layout mode lain.
+  useLayoutEffect(() => {
+    const video = videoRef.current;
+    const bgWrapper = hybridBgWrapperRef.current;
+    if (!smartCropActive || !smartCropTrajectory || !previewClip) {
+      if (video) {
+        video.style.width = '';
+        video.style.height = '';
+        video.style.top = '';
+        video.style.left = '';
+      }
+      if (bgWrapper) {
+        bgWrapper.style.opacity = '';
+      }
+      return;
+    }
+    if (bgWrapper) {
+      bgWrapper.style.opacity = '0';
+    }
+    syncSmartCropDom(
+      video,
+      bgWrapper,
+      video?.currentTime || previewClip.start || 0,
+      smartCropTrajectory,
+      previewClip.start,
+      screenContentWidth,
+      framingMode,
+    );
+  }, [
+    smartCropActive,
+    smartCropTrajectory,
+    previewClip,
+    screenContentWidth,
+    framingMode,
+    hasLoadedMetadata,
+  ]);
+
+  // Update posisi smart crop tepat di setiap decoded video frame (via requestVideoFrameCallback
+  // dengan mediaTime eksak) + requestAnimationFrame agar sinkron di setiap cut kamera tanpa glitch.
+  useEffect(() => {
+    if (!smartCropActive || !isPlaying || !smartCropTrajectory || !previewClip) return;
+    let rafId = 0;
+    let rvfcId = 0;
+    const videoEl = videoRef.current as
+      | (HTMLVideoElement & {
+          requestVideoFrameCallback?: (
+            cb: (now: number, meta: { mediaTime: number }) => void,
+          ) => number;
+          cancelVideoFrameCallback?: (id: number) => void;
+        })
+      | null;
+
+    const applyAtTime = (mediaTime: number) => {
+      const video = videoRef.current;
+      if (!video) return;
+      syncSmartCropDom(
+        video,
+        hybridBgWrapperRef.current,
+        mediaTime,
+        smartCropTrajectory,
+        previewClip.start,
+        screenContentWidth,
+        framingMode,
+      );
+      const secondary = secondaryVideoRef.current;
+      if (
+        secondary &&
+        !secondary.seeking &&
+        Math.abs((secondary.currentTime || 0) - mediaTime) > 0.08
+      ) {
+        try {
+          secondary.currentTime = mediaTime;
+        } catch {
+          // metadata belum siap
+        }
+      }
     };
-  })();
 
-  // Panel kedua (mode Dual Stack) mengikuti panel utama: waktu, play/pause,
-  // dan selalu tanpa suara supaya tidak ada audio ganda.
+    if (videoEl && typeof videoEl.requestVideoFrameCallback === 'function') {
+      const onFrame = (_now: number, meta: { mediaTime: number }) => {
+        applyAtTime(meta.mediaTime);
+        if (videoEl.requestVideoFrameCallback) {
+          rvfcId = videoEl.requestVideoFrameCallback(onFrame);
+        }
+      };
+      rvfcId = videoEl.requestVideoFrameCallback(onFrame);
+    } else {
+      const tick = () => {
+        const video = videoRef.current;
+        if (video && !video.paused) {
+          applyAtTime(video.currentTime || 0);
+        }
+        rafId = requestAnimationFrame(tick);
+      };
+      rafId = requestAnimationFrame(tick);
+    }
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      if (videoEl && typeof videoEl.cancelVideoFrameCallback === 'function' && rvfcId) {
+        videoEl.cancelVideoFrameCallback(rvfcId);
+      }
+    };
+  }, [
+    smartCropActive,
+    isPlaying,
+    smartCropTrajectory,
+    previewClip,
+    screenContentWidth,
+    framingMode,
+  ]);
+
+  // Panel kedua (mode Dual Stack / Fit-Blur background) mengikuti panel utama: waktu,
+  // speed, play/pause, dan selalu tanpa suara supaya tidak ada audio ganda.
   useEffect(() => {
     const secondary = secondaryVideoRef.current;
     const primary = videoRef.current;
     if (!secondary || !primary) return;
-    if (Math.abs((secondary.currentTime || 0) - (primary.currentTime || 0)) > 0.15) {
+    secondary.playbackRate = playbackRate;
+    if (
+      !secondary.seeking &&
+      Math.abs((secondary.currentTime || 0) - (primary.currentTime || 0)) > 0.2
+    ) {
       try {
         secondary.currentTime = primary.currentTime;
       } catch {
@@ -303,7 +468,7 @@ export const PhonePreview: React.FC<PhonePreviewProps> = ({
     }
     if (primary.paused && !secondary.paused) secondary.pause();
     if (!primary.paused && secondary.paused) void secondary.play().catch(() => undefined);
-  }, [currentTime, isPlaying, framingMode]);
+  }, [currentTime, isPlaying, framingMode, hasHybridFitBlurSegments, playbackRate]);
 
   const togglePlay = async () => {
     const video = videoRef.current;
@@ -373,6 +538,17 @@ export const PhonePreview: React.FC<PhonePreviewProps> = ({
 
     setCurrentTime(nextTime);
     video.currentTime = nextTime;
+    if (smartCropActive && smartCropTrajectory && previewClip) {
+      syncSmartCropDom(
+        video,
+        hybridBgWrapperRef.current,
+        nextTime,
+        smartCropTrajectory,
+        previewClip.start,
+        screenContentWidth,
+        framingMode,
+      );
+    }
     if (secondaryVideoRef.current) {
       try {
         secondaryVideoRef.current.currentTime = nextTime;
@@ -398,6 +574,9 @@ export const PhonePreview: React.FC<PhonePreviewProps> = ({
     setPlaybackRate(nextRate);
     if (videoRef.current) {
       videoRef.current.playbackRate = nextRate;
+    }
+    if (secondaryVideoRef.current) {
+      secondaryVideoRef.current.playbackRate = nextRate;
     }
   };
 
@@ -638,9 +817,9 @@ export const PhonePreview: React.FC<PhonePreviewProps> = ({
   const remainingTime = Math.max(0, timelineDuration - timelineCurrent);
 
   return (
-    <div className="flex flex-col h-full max-lg:h-auto w-full rounded-2xl bg-[#090d13] border border-slate-800/80 shadow-xl overflow-hidden">
+    <div className="flex flex-col h-full max-lg:h-auto w-full rounded-2xl bg-white dark:bg-[#090d13] border border-slate-200/90 dark:border-slate-800/80 shadow-sm dark:shadow-xl overflow-hidden">
       {/* PERSISTENT TERMINAL HEADER (Video Preview) */}
-      <div className="flex h-8 items-center justify-between px-3.5 border-b border-slate-800/80 bg-[#161b22] flex-shrink-0">
+      <div className="flex h-8 items-center justify-between px-3.5 border-b border-slate-200/90 dark:border-slate-800/80 bg-slate-100/90 dark:bg-[#161b22] flex-shrink-0">
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f56]" />
           <span className="h-2.5 w-2.5 rounded-full bg-[#ffbd2e]" />
@@ -648,14 +827,6 @@ export const PhonePreview: React.FC<PhonePreviewProps> = ({
             className={`h-2.5 w-2.5 rounded-full ${isProcessing ? 'bg-[#27c93f] animate-pulse' : 'bg-[#27c93f]'}`}
           />
         </div>
-        {clipTitle && (
-          <span
-            className="text-[11px] font-mono text-slate-400 truncate max-w-[200px] ml-2"
-            title={clipTitle}
-          >
-            {clipTitle}
-          </span>
-        )}
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col p-3 sm:p-3.5 max-sm:p-2.5 overflow-hidden">
@@ -665,472 +836,508 @@ export const PhonePreview: React.FC<PhonePreviewProps> = ({
             - Transparent Official iPhone 17 Pro Overlay (.iphone-frame-overlay: 389px × 800px)
             - Dynamically auto-scaled to fit 100% of available column viewport
            ───────────────────────────────────────────────────────────── */}
-      <div
-        ref={stageRef}
-        className="flex flex-1 min-h-0 w-full items-center justify-center p-1 overflow-hidden relative select-none max-lg:flex-none max-lg:min-h-[460px]"
-      >
-        {/* Subtle Ambient Radial Lighting Floor */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white/[0.02] via-transparent to-transparent pointer-events-none -z-10" />
+        <div
+          ref={stageRef}
+          className="flex flex-1 min-h-0 w-full items-center justify-center p-1 overflow-hidden relative select-none max-lg:flex-none max-lg:min-h-[460px]"
+        >
+          {/* Subtle Ambient Radial Lighting Floor (dark mode only; light mode stays pure uniform white) */}
+          <div className="hidden dark:block absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white/[0.02] via-transparent to-transparent pointer-events-none -z-10" />
 
-        {/* ─────────────────────────────────────────────────────────
+          {/* ─────────────────────────────────────────────────────────
             1:1 PHOTOREALISTIC iPHONE 17 PRO AUTO-SCALED WRAPPER
            ───────────────────────────────────────────────────────── */}
-        <div
-          className="relative shrink-0 flex items-center justify-center select-none"
-          style={{
-            width: `${Math.round(389 * scale)}px`,
-            height: `${Math.round(800 * scale)}px`,
-          }}
-        >
           <div
+            className="relative shrink-0 flex items-center justify-center select-none"
             style={{
-              width: '389px',
-              height: '800px',
-              transform: `scale(${scale})`,
-              transformOrigin: '0 0',
+              width: `${Math.round(389 * scale)}px`,
+              height: `${Math.round(800 * scale)}px`,
             }}
-            className="absolute top-0 left-0"
           >
-            {/* ─────────────────────────────────────────────────────────
+            <div
+              style={{
+                width: '389px',
+                height: '800px',
+                transform: `scale(${scale})`,
+                transformOrigin: '0 0',
+              }}
+              className="absolute top-0 left-0"
+            >
+              {/* ─────────────────────────────────────────────────────────
                 1. UNDERNEATH LAYER (.iphone-screen): Exact Apple Viewport
                 - 354px width × 771px height
                 - top: 14px, left: 18px
                 - border-radius: 46px
                 - overflow: hidden
                ───────────────────────────────────────────────────────── */}
-            <div className="iphone-screen bg-[#07090e] absolute top-[14px] left-[17px] w-[356px] h-[772px] rounded-[46px] overflow-hidden shadow-2xl flex flex-col z-10">
-              {/* Front Screen Diagonal Glass Reflection Highlight */}
-              <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-tr from-transparent via-white/[0.015] to-white/[0.04] rounded-[46px]" />
+              <div className="iphone-screen bg-[#07090e] absolute top-[14px] left-[17px] w-[356px] h-[772px] rounded-[46px] overflow-hidden dark:shadow-2xl flex flex-col z-10">
+                {/* Front Screen Diagonal Glass Reflection Highlight */}
+                <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-tr from-transparent via-white/[0.015] to-white/[0.04] rounded-[46px]" />
 
-              {/* ── AUTHENTIC iOS 26 STATUS BAR (Apple HIG) ──
+                {/* ── AUTHENTIC iOS 26 STATUS BAR (Apple HIG) ──
                   - Time kiri: SF Pro Text Semibold, tracking rapat
                   - Kanan: Cellular (4 bar rounded, naik kiri→kanan) + Battery
                   - Tanpa Wi-Fi, mengikuti tata letak nukilan iOS terbaru. */}
-              <div className="absolute top-[8px] inset-x-0 h-[27px] pl-[30px] pr-[16px] z-25 flex items-center justify-between text-white pointer-events-none select-none">
-                {/* Left Flank: Time (9:41, SF Pro Semibold, tight tracking) */}
-                <div className="flex items-center">
-                  <span
-                    className="text-[16px] font-semibold text-white/70 antialiased"
-                    style={{
-                      fontFamily:
-                        "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', Helvetica, sans-serif",
-                      letterSpacing: '-0.4px',
-                      textShadow: '0 1px 2px rgba(0, 0, 0, 0.35)',
-                    }}
-                  >
-                    9:41
-                  </span>
-                </div>
-
-                {/* Right Flank: Cellular (4 rounded bars, ascending left→right) + Battery */}
-                <div className="flex items-center gap-[7px] pr-0.5">
-                  {/* Cellular Signal */}
-                  <svg
-                    className="w-[18px] h-[12.5px] text-white/70 shrink-0"
-                    viewBox="0 0 18 12.5"
-                    fill="currentColor"
-                    style={{ filter: 'drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35))' }}
-                  >
-                    <rect x="0" y="8.2" width="2.7" height="4.3" rx="0.9" />
-                    <rect x="5" y="5.3" width="2.7" height="7.2" rx="0.9" />
-                    <rect x="10" y="2.4" width="2.7" height="10.1" rx="0.9" />
-                    <rect x="15" y="0" width="2.7" height="12.5" rx="0.9" />
-                  </svg>
-
-                  {/* Battery (rounded capsule + fill + right terminal nub) */}
-                  <svg
-                    className="w-[26px] h-[12px] text-white/70 shrink-0"
-                    viewBox="0 0 26 12"
-                    fill="none"
-                    style={{ filter: 'drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35))' }}
-                  >
-                    <rect
-                      x="0.7"
-                      y="0.7"
-                      width="20.4"
-                      height="10.6"
-                      rx="3.4"
-                      stroke="currentColor"
-                      strokeWidth="1"
-                      strokeOpacity="0.45"
-                    />
-                    <rect x="2.1" y="2.1" width="14" height="7.8" rx="1.9" fill="currentColor" />
-                    <path
-                      d="M22.6 3.9C23.5 3.9 24 4.4 24 5.1V6.9C24 7.6 23.5 8.1 22.6 8.1"
-                      stroke="currentColor"
-                      strokeWidth="1"
-                      strokeOpacity="0.45"
-                      strokeLinecap="round"
-                      fill="none"
-                    />
-                  </svg>
-                </div>
-              </div>
-
-              {/* OLED Screen Content Container */}
-              <div
-                ref={screenContentRef}
-                className={`relative w-full h-full bg-slate-950 overflow-hidden flex items-center justify-center ${
-                  videoStreamUrl ? 'cursor-pointer' : ''
-                }`}
-                onClick={videoStreamUrl ? () => void togglePlay() : undefined}
-                onKeyDown={videoStreamUrl ? handlePreviewKeyDown : undefined}
-                role={videoStreamUrl ? 'button' : undefined}
-                tabIndex={videoStreamUrl ? 0 : undefined}
-                aria-label={
-                  videoStreamUrl
-                    ? isPlaying
-                      ? 'Pause video preview'
-                      : 'Putar video preview'
-                    : undefined
-                }
-                title={
-                  videoStreamUrl ? (isPlaying ? 'Klik untuk pause' : 'Klik untuk putar') : undefined
-                }
-              >
-                {/* ── REAL VIDEO STREAM PLAYBACK IF AVAILABLE ── */}
-                {videoStreamUrl ? (
-                  <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-                    {/* Background Blurred Stream for Fit/16:9 mode */}
-                    {framingMode === 'fit_blur' && (
-                      <video
-                        src={videoStreamUrl}
-                        className="absolute inset-0 w-full h-full object-cover filter blur-xl scale-125 opacity-50 pointer-events-none"
-                        muted
-                        loop
-                      />
-                    )}
-
-                    {/* Dual Stack (split_screen): dua panel 50:50, kiri host & kanan guest */}
-                    {!isRenderedClip && framingMode === 'split_screen' ? (
-                      <div className="relative z-10 flex h-full w-full flex-col">
-                        <div className="relative h-1/2 w-full overflow-hidden bg-black">
-                          <video
-                            ref={videoRef}
-                            src={videoStreamUrl}
-                            onLoadedMetadata={handleLoadedMetadata}
-                            onError={handleMediaError}
-                            onTimeUpdate={handleTimeUpdateWithClip}
-                            onPlay={() => setIsPlaying(true)}
-                            onPause={() => setIsPlaying(false)}
-                            onEnded={() => setIsPlaying(false)}
-                            muted={isMuted}
-                            className="h-full w-full object-cover object-left"
-                            playsInline
-                          />
-                        </div>
-                        <div className="h-[3px] w-full bg-slate-900/90" />
-                        <div className="relative h-1/2 w-full overflow-hidden bg-black">
-                          <video
-                            ref={secondaryVideoRef}
-                            src={videoStreamUrl}
-                            muted
-                            className="h-full w-full object-cover object-right"
-                            playsInline
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      /* Main Video Screen */
-                      <video
-                        ref={videoRef}
-                        src={videoStreamUrl}
-                        onLoadedMetadata={handleLoadedMetadata}
-                        onError={handleMediaError}
-                        onTimeUpdate={handleTimeUpdateWithClip}
-                        onPlay={() => setIsPlaying(true)}
-                        onPause={() => setIsPlaying(false)}
-                        onEnded={() => setIsPlaying(false)}
-                        muted={isMuted}
-                        className={`relative z-10 transition-all duration-300 ${
-                          !isRenderedClip && framingMode === 'fit_blur'
-                            ? 'w-full h-auto max-h-full object-contain'
-                            : smartCropVideoStyle
-                              ? ''
-                              : 'w-full h-full object-cover'
-                        }`}
-                        style={smartCropVideoStyle ?? undefined}
-                        playsInline
-                      />
-                    )}
-
-                    {/* Play / Pause Tap Feedback Pulse */}
-                    {showPlayPulse && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/60 backdrop-blur-md text-white shadow-2xl border border-white/20 animate-scale-in">
-                          {isPlaying ? (
-                            <PauseIcon className="h-7 w-7 text-white fill-white" />
-                          ) : (
-                            <PlayIcon className="h-7 w-7 text-white fill-white ml-0.5" />
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Center Play Button Overlay when Paused */}
-                    {!isPlaying && !showPlayPulse && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20 bg-black/20">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/25 backdrop-blur-md text-white shadow-xl border border-white/30 group-hover:scale-105 transition-transform">
-                          <PlayIcon className="h-6 w-6 text-white fill-white ml-0.5" />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Tap-for-Sound hint: shown while playing muted (browser autoplay policy) */}
-                    {isPlaying && isMuted && !isProcessing && (
-                      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-                        <div className="flex items-center gap-1.5 rounded-full border border-white/20 bg-black/70 px-3 py-1.5 text-white shadow-lg backdrop-blur-md animate-pulse">
-                          <SpeakerXMarkIcon className="h-3.5 w-3.5 text-amber-300" />
-                          <span className="text-[10px] font-semibold tracking-wide">
-                            Ketuk untuk nyalakan suara
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Processing Overlay */}
-                    {isProcessing && (
-                      <div className="absolute inset-0 bg-black/80 z-40 flex flex-col items-center justify-center gap-3 text-center p-4">
-                        <div className="h-9 w-9 animate-spin rounded-full border-3 border-emerald-500 border-t-transparent" />
-                        <p className="font-['Outfit',_sans-serif] text-xs font-bold text-white tracking-wide">
-                          Rendering 9:16 Klip AI...
-                        </p>
-                        <p className="text-[10px] font-mono text-emerald-400">
-                          Smart Face Framing Active
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  // ── EMPTY STATE: NO SOURCE VIDEO SELECTED ──
-                  <div className="relative w-full h-full flex flex-col items-center justify-center gap-6 px-6 text-center bg-[radial-gradient(ellipse_at_50%_38%,_#122032_0%,_#0a0f16_55%,_#05070a_100%)] select-none">
-                    <div className="relative">
-                      <div className="absolute inset-0 scale-150 rounded-full bg-emerald-500/20 blur-2xl" />
-                      <img
-                        src="/images/logo-icon-transparent.png"
-                        alt="VisionClipper Studio"
-                        draggable={false}
-                        className="relative h-[128px] w-[128px] object-contain opacity-90 drop-shadow-[0_8px_34px_rgba(16,185,129,0.45)]"
-                      />
-                    </div>
-                    <div className="space-y-2.5">
-                      <p className="font-['Outfit',_sans-serif] text-[26px] font-bold tracking-wide text-white/90">
-                        Belum ada video
-                      </p>
-                      <p className="mx-auto max-w-[300px] text-[14.5px] leading-relaxed text-slate-400">
-                        Pilih video sumber atau folder klip di panel kiri untuk melihat preview di
-                        sini.
-                      </p>
-                    </div>
-                    <span className="px-4 py-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-[11.5px] font-bold uppercase tracking-wider font-mono text-emerald-300">
-                      {framingMode === 'smart_crop'
-                        ? 'Smart Follow · 9:16'
-                        : framingMode === 'fit_blur'
-                          ? '16:9 Fit Blur'
-                          : 'Dual Stack · 50:50'}
+                <div className="absolute top-[8px] inset-x-0 h-[27px] pl-[30px] pr-[16px] z-25 flex items-center justify-between text-white pointer-events-none select-none">
+                  {/* Left Flank: Time (9:41, SF Pro Semibold, tight tracking) */}
+                  <div className="flex items-center">
+                    <span
+                      className="text-[16px] font-semibold text-white/70 antialiased"
+                      style={{
+                        fontFamily:
+                          "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', Helvetica, sans-serif",
+                        letterSpacing: '-0.4px',
+                        textShadow: '0 1px 2px rgba(0, 0, 0, 0.35)',
+                      }}
+                    >
+                      9:41
                     </span>
                   </div>
-                )}
 
-                {/* ── SUBTITLE STYLE PREVIEW (only when a video source is loaded,
-                    so placeholder caption doesn't float over the empty state) ── */}
-                {/* Mirrors the backend safe zone: bottom-anchored at subPosition% with
-                    ~11% horizontal margins so text never touches the frame edge. */}
-                {!isRenderedClip && selectedPresetId !== 'no_subtitle' && videoStreamUrl && (
-                  <div
-                    className="absolute z-20 inset-x-0 px-[11%] flex justify-center pointer-events-none transition-all duration-200"
-                    style={{ bottom: `${Math.max(4, 100 - subPosition)}%` }}
-                  >
-                    {getSubtitleSample()}
+                  {/* Right Flank: Cellular (4 rounded bars, ascending left→right) + Battery */}
+                  <div className="flex items-center gap-[7px] pr-0.5">
+                    {/* Cellular Signal */}
+                    <svg
+                      className="w-[18px] h-[12.5px] text-white/70 shrink-0"
+                      viewBox="0 0 18 12.5"
+                      fill="currentColor"
+                      style={{ filter: 'drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35))' }}
+                    >
+                      <rect x="0" y="8.2" width="2.7" height="4.3" rx="0.9" />
+                      <rect x="5" y="5.3" width="2.7" height="7.2" rx="0.9" />
+                      <rect x="10" y="2.4" width="2.7" height="10.1" rx="0.9" />
+                      <rect x="15" y="0" width="2.7" height="12.5" rx="0.9" />
+                    </svg>
+
+                    {/* Battery (rounded capsule + fill + right terminal nub) */}
+                    <svg
+                      className="w-[26px] h-[12px] text-white/70 shrink-0"
+                      viewBox="0 0 26 12"
+                      fill="none"
+                      style={{ filter: 'drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35))' }}
+                    >
+                      <rect
+                        x="0.7"
+                        y="0.7"
+                        width="20.4"
+                        height="10.6"
+                        rx="3.4"
+                        stroke="currentColor"
+                        strokeWidth="1"
+                        strokeOpacity="0.45"
+                      />
+                      <rect x="2.1" y="2.1" width="14" height="7.8" rx="1.9" fill="currentColor" />
+                      <path
+                        d="M22.6 3.9C23.5 3.9 24 4.4 24 5.1V6.9C24 7.6 23.5 8.1 22.6 8.1"
+                        stroke="currentColor"
+                        strokeWidth="1"
+                        strokeOpacity="0.45"
+                        strokeLinecap="round"
+                        fill="none"
+                      />
+                    </svg>
                   </div>
-                )}
+                </div>
 
-                {/* ── LIVE LIQUID GLASS WATERMARK (Top Safe Zone — No Background) ── */}
-                {/* Parent hanya mengaktifkan `watermarkEnabled` setelah step
+                {/* OLED Screen Content Container */}
+                <div
+                  ref={screenContentRef}
+                  className={`relative w-full h-full bg-slate-950 overflow-hidden flex items-center justify-center ${
+                    videoStreamUrl ? 'cursor-pointer' : ''
+                  }`}
+                  onClick={videoStreamUrl ? () => void togglePlay() : undefined}
+                  onKeyDown={videoStreamUrl ? handlePreviewKeyDown : undefined}
+                  role={videoStreamUrl ? 'button' : undefined}
+                  tabIndex={videoStreamUrl ? 0 : undefined}
+                  aria-label={
+                    videoStreamUrl
+                      ? isPlaying
+                        ? 'Pause video preview'
+                        : 'Putar video preview'
+                      : undefined
+                  }
+                  title={
+                    videoStreamUrl
+                      ? isPlaying
+                        ? 'Klik untuk pause'
+                        : 'Klik untuk putar'
+                      : undefined
+                  }
+                >
+                  {/* ── REAL VIDEO STREAM PLAYBACK IF AVAILABLE ── */}
+                  {videoStreamUrl ? (
+                    <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+                      {/* Background Blurred Stream for Fit/16:9 or Hybrid Wide-Shot mode */}
+                      {!isRenderedClip &&
+                        (framingMode === 'fit_blur' || hasHybridFitBlurSegments) && (
+                          <div
+                            ref={hybridBgWrapperRef}
+                            className="absolute inset-0 pointer-events-none"
+                            style={{ opacity: framingMode === 'fit_blur' ? 1 : 0 }}
+                          >
+                            <video
+                              ref={!isRenderedClip ? secondaryVideoRef : undefined}
+                              src={videoStreamUrl}
+                              className="w-full h-full object-cover filter blur-xl scale-125 opacity-50 pointer-events-none"
+                              muted
+                              playsInline
+                            />
+                          </div>
+                        )}
+
+                      {/* Dual Stack (split_screen): dua panel 50:50, kiri host & kanan guest */}
+                      {!isRenderedClip && framingMode === 'split_screen' ? (
+                        <div className="relative z-10 flex h-full w-full flex-col">
+                          <div className="relative h-1/2 w-full overflow-hidden bg-black">
+                            <video
+                              ref={videoRef}
+                              src={videoStreamUrl}
+                              onLoadedMetadata={handleLoadedMetadata}
+                              onError={handleMediaError}
+                              onTimeUpdate={handleTimeUpdateWithClip}
+                              onPlay={() => setIsPlaying(true)}
+                              onPause={() => setIsPlaying(false)}
+                              onEnded={() => setIsPlaying(false)}
+                              muted={isMuted}
+                              className="h-full w-full object-cover object-left"
+                              playsInline
+                            />
+                          </div>
+                          <div className="h-[3px] w-full bg-slate-900/90" />
+                          <div className="relative h-1/2 w-full overflow-hidden bg-black">
+                            <video
+                              ref={secondaryVideoRef}
+                              src={videoStreamUrl}
+                              muted
+                              className="h-full w-full object-cover object-right"
+                              playsInline
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        /* Main Video Screen */
+                        <video
+                          ref={videoRef}
+                          src={videoStreamUrl}
+                          onLoadedMetadata={handleLoadedMetadata}
+                          onError={handleMediaError}
+                          onTimeUpdate={handleTimeUpdateWithClip}
+                          onSeeked={() => {
+                            if (
+                              smartCropActive &&
+                              videoRef.current &&
+                              smartCropTrajectory &&
+                              previewClip
+                            ) {
+                              syncSmartCropDom(
+                                videoRef.current,
+                                hybridBgWrapperRef.current,
+                                videoRef.current.currentTime || 0,
+                                smartCropTrajectory,
+                                previewClip.start,
+                                screenContentWidth,
+                                framingMode,
+                              );
+                            }
+                          }}
+                          onPlay={() => setIsPlaying(true)}
+                          onPause={() => setIsPlaying(false)}
+                          onEnded={() => setIsPlaying(false)}
+                          muted={isMuted}
+                          className={`relative z-10 ${
+                            !isRenderedClip && framingMode === 'fit_blur'
+                              ? 'transition-all duration-300 w-full h-auto max-h-full object-contain'
+                              : !isRenderedClip && framingMode === 'smart_crop' && previewClip
+                                ? smartCropActive
+                                  ? 'transition-none'
+                                  : 'transition-none w-full h-full object-cover object-[28%_center]'
+                                : 'transition-all duration-300 w-full h-full object-cover'
+                          }`}
+                          style={smartCropActive ? SMART_CROP_STATIC_STYLE : undefined}
+                          playsInline
+                        />
+                      )}
+
+                      {/* Play / Pause Tap Feedback Pulse */}
+                      {showPlayPulse && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+                          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/60 backdrop-blur-md text-white shadow-2xl border border-white/20 animate-scale-in">
+                            {isPlaying ? (
+                              <PauseIcon className="h-7 w-7 text-white fill-white" />
+                            ) : (
+                              <PlayIcon className="h-7 w-7 text-white fill-white ml-0.5" />
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Center Play Button Overlay when Paused */}
+                      {!isPlaying && !showPlayPulse && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20 bg-black/20">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/25 backdrop-blur-md text-white shadow-xl border border-white/30 group-hover:scale-105 transition-transform">
+                            <PlayIcon className="h-6 w-6 text-white fill-white ml-0.5" />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tap-for-Sound hint: shown while playing muted (browser autoplay policy) */}
+                      {isPlaying && isMuted && !isProcessing && (
+                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+                          <div className="flex items-center gap-1.5 rounded-full border border-white/20 bg-black/70 px-3 py-1.5 text-white shadow-lg backdrop-blur-md animate-pulse">
+                            <SpeakerXMarkIcon className="h-3.5 w-3.5 text-amber-300" />
+                            <span className="text-[10px] font-semibold tracking-wide">
+                              Ketuk untuk nyalakan suara
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Processing Overlay */}
+                      {isProcessing && (
+                        <div className="absolute inset-0 bg-black/80 z-40 flex flex-col items-center justify-center gap-3 text-center p-4">
+                          <div className="h-9 w-9 animate-spin rounded-full border-3 border-emerald-500 border-t-transparent" />
+                          <p className="font-['Outfit',_sans-serif] text-xs font-bold text-white tracking-wide">
+                            Rendering 9:16 Klip AI...
+                          </p>
+                          <p className="text-[10px] font-mono text-emerald-400">
+                            Smart Face Framing Active
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    // ── EMPTY STATE: NO SOURCE VIDEO SELECTED ──
+                    <div className="relative w-full h-full flex flex-col items-center justify-center gap-6 px-6 text-center bg-[radial-gradient(ellipse_at_50%_38%,_#122032_0%,_#0a0f16_55%,_#05070a_100%)] select-none">
+                      <div className="relative">
+                        <div className="absolute inset-0 scale-150 rounded-full bg-emerald-500/20 blur-2xl" />
+                        <img
+                          src="/images/logo-icon-transparent.png"
+                          alt="VisionClipper Studio"
+                          draggable={false}
+                          className="relative h-[128px] w-[128px] object-contain opacity-90 drop-shadow-[0_8px_34px_rgba(16,185,129,0.45)]"
+                        />
+                      </div>
+                      <div className="space-y-2.5">
+                        <p className="font-['Outfit',_sans-serif] text-[26px] font-bold tracking-wide text-white/90">
+                          Belum ada video
+                        </p>
+                        <p className="mx-auto max-w-[300px] text-[14.5px] leading-relaxed text-slate-400">
+                          Pilih video sumber atau folder klip di panel kiri untuk melihat preview di
+                          sini.
+                        </p>
+                      </div>
+                      <span className="px-4 py-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-[11.5px] font-bold uppercase tracking-wider font-mono text-emerald-300">
+                        {framingMode === 'smart_crop'
+                          ? 'Smart Follow · 9:16'
+                          : framingMode === 'fit_blur'
+                            ? '16:9 Fit Blur'
+                            : 'Dual Stack · 50:50'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* ── SUBTITLE STYLE PREVIEW (only when a video source is loaded,
+                    so placeholder caption doesn't float over the empty state) ── */}
+                  {/* Mirrors the backend safe zone: bottom-anchored at subPosition% with
+                    ~11% horizontal margins so text never touches the frame edge. */}
+                  {!isRenderedClip && selectedPresetId !== 'no_subtitle' && videoStreamUrl && (
+                    <div
+                      className="absolute z-20 inset-x-0 px-[11%] flex justify-center pointer-events-none transition-all duration-200"
+                      style={{ bottom: `${Math.max(4, 100 - subPosition)}%` }}
+                    >
+                      {getSubtitleSample()}
+                    </div>
+                  )}
+
+                  {/* ── LIVE LIQUID GLASS WATERMARK (Top Safe Zone — No Background) ── */}
+                  {/* Parent hanya mengaktifkan `watermarkEnabled` setelah step
                     Branding terbuka (pre-render), jadi badge tidak muncul di
                     tahap config awal. */}
-                {watermarkEnabled && !isRenderedClip && (
-                  <div className="absolute top-12 inset-x-4 flex items-center justify-between pointer-events-none z-30">
-                    <span className="liquid-glass-text text-[10px] font-semibold tracking-wide truncate max-w-[58%]">
-                      Source: {sourceWatermark || 'Nama Channel'}
-                    </span>
+                  {watermarkEnabled && !isRenderedClip && (
+                    <div className="absolute top-12 inset-x-4 flex items-center justify-between pointer-events-none z-30">
+                      <span className="liquid-glass-text text-[10px] font-semibold tracking-wide truncate max-w-[58%]">
+                        Source: {sourceWatermark || 'Nama Channel'}
+                      </span>
 
-                    <span className="liquid-glass-text text-[10.5px] font-bold font-mono tracking-tight">
-                      {accountWatermark
-                        ? accountWatermark.startsWith('@')
-                          ? accountWatermark
-                          : `@${accountWatermark}`
-                        : '@akun_kamu'}
-                    </span>
+                      <span className="liquid-glass-text text-[10.5px] font-bold font-mono tracking-tight">
+                        {accountWatermark
+                          ? accountWatermark.startsWith('@')
+                            ? accountWatermark
+                            : `@${accountWatermark}`
+                          : '@akun_kamu'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Video Scrubber Bar on Phone Screen (no track — it drew a stray line under the home swipe) */}
+                  <div className="absolute bottom-0 inset-x-0 h-1 z-30 pointer-events-none">
+                    <div
+                      className="h-full bg-emerald-500 transition-all duration-100"
+                      style={{ width: `${playbackProgress}%` }}
+                    />
                   </div>
-                )}
-
-                {/* Video Scrubber Bar on Phone Screen (no track — it drew a stray line under the home swipe) */}
-                <div className="absolute bottom-0 inset-x-0 h-1 z-30 pointer-events-none">
-                  <div
-                    className="h-full bg-emerald-500 transition-all duration-100"
-                    style={{ width: `${playbackProgress}%` }}
-                  />
                 </div>
-              </div>
 
-              {/* ─────────────────────────────────────────────────────
+                {/* ─────────────────────────────────────────────────────
                   AUTHENTIC iOS HOME INDICATOR BAR
                   - 134pt wide @ 393pt screen => 121px @ 356px, 5px tall, 9px from bottom
                  ───────────────────────────────────────────────────── */}
-              <div className="absolute bottom-[9px] left-1/2 -translate-x-1/2 h-[5px] w-[121px] rounded-full bg-white/85 shadow-sm pointer-events-none z-40" />
-            </div>
+                <div className="absolute bottom-[9px] left-1/2 -translate-x-1/2 h-[5px] w-[121px] rounded-full bg-white/85 shadow-sm pointer-events-none z-40" />
+              </div>
 
-            {/* ─────────────────────────────────────────────────────────────
+              {/* ─────────────────────────────────────────────────────────────
                 2. OVERLAY LAYER (.iphone-frame-overlay): 1:1 Transparent Photorealistic iPhone 17 Pro PNG
                 - Official WebMobileFirst transparent mockup
                 - Real titanium metallic sheen, antenna bands, tactile hardware buttons
                 - Opaque Dynamic Island with real camera lens glass reflections
                 - 389px width × 800px height, pointer-events-none, z-30
                ───────────────────────────────────────────────────────────── */}
-            <img
-              src="/images/mockup-apple-iphone-17-pro-2025-transparent.png"
-              onError={(e) => {
-                e.currentTarget.src =
-                  'https://www.webmobilefirst.com/img/mockups/mockup-apple-iphone-17-pro-2025-transparent.png';
-              }}
-              alt="Apple iPhone 17 Pro Frame"
-              className="iphone-frame-overlay absolute inset-0 w-[389px] h-[800px] pointer-events-none z-30 object-contain select-none"
-              draggable={false}
+              <img
+                src="/images/mockup-apple-iphone-17-pro-2025-transparent.png"
+                onError={(e) => {
+                  e.currentTarget.src =
+                    'https://www.webmobilefirst.com/img/mockups/mockup-apple-iphone-17-pro-2025-transparent.png';
+                }}
+                alt="Apple iPhone 17 Pro Frame"
+                className="iphone-frame-overlay absolute inset-0 w-[389px] h-[800px] pointer-events-none z-30 object-contain select-none"
+                draggable={false}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ── STUDIO TRANSPORT BAR ── */}
+        <div
+          className={`ios26-glass w-full max-w-[480px] px-3.5 py-2 flex items-center gap-3 select-none flex-shrink-0 mt-3 transition-opacity duration-200 ${
+            isTransportDisabled ? 'opacity-70' : ''
+          }`}
+        >
+          {/* Primary Transport Play/Pause */}
+          <button
+            type="button"
+            onClick={togglePlay}
+            disabled={isTransportDisabled}
+            className={`ios26-play flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-white transition ${
+              isTransportDisabled ? 'cursor-not-allowed opacity-40 saturate-50' : 'active:scale-95'
+            }`}
+            aria-label={
+              isTransportDisabled
+                ? 'Belum ada video untuk diputar'
+                : isPlaying
+                  ? 'Jeda preview'
+                  : 'Putar preview'
+            }
+            title={
+              isTransportDisabled
+                ? 'Belum ada video untuk diputar'
+                : isPlaying
+                  ? 'Jeda preview'
+                  : 'Putar preview'
+            }
+          >
+            {isPlaying ? (
+              <PauseIcon className="h-4 w-4 text-white" />
+            ) : (
+              <PlayIcon className="h-4 w-4 ml-0.5 text-white" />
+            )}
+          </button>
+
+          {/* Timeline and Time Readout */}
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex items-center justify-between text-[11px] font-mono">
+              {isTimelineReady ? (
+                <>
+                  {/* Playback in progress / paused at a known position */}
+                  <span className="flex items-center gap-1.5 text-slate-900 dark:text-white font-semibold tabular-nums">
+                    <span
+                      aria-hidden
+                      className={`h-1.5 w-1.5 rounded-full transition-colors duration-200 ${
+                        isPlaying
+                          ? 'bg-emerald-500 dark:bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.75)] dark:shadow-[0_0_6px_rgba(52,211,153,0.85)]'
+                          : 'bg-slate-900/25 dark:bg-white/30'
+                      }`}
+                    />
+                    {formatTime(timelineCurrent)}
+                  </span>
+                  <span
+                    className={`tabular-nums transition-colors duration-200 ${isPlaying ? 'text-slate-600 dark:text-white/55' : 'text-slate-400 dark:text-white/35'}`}
+                  >
+                    {formatTime(timelineDuration)}
+                  </span>
+                </>
+              ) : (
+                <>
+                  {/* No playback: no source selected or media metadata not loaded yet */}
+                  <span className="text-slate-400 dark:text-white/25">--:--</span>
+                  <span className="text-slate-300 dark:text-white/20">--:--</span>
+                </>
+              )}
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={isTimelineReady ? timelineDuration : 1}
+              step={isTimelineReady ? 0.1 : 1}
+              value={isTimelineReady ? Math.min(timelineCurrent, timelineDuration) : 0}
+              onChange={(e) => handleSeek(Number(e.target.value))}
+              disabled={!isTimelineReady}
+              className={`ios-media-scrubber block w-full ${
+                isTimelineReady ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+              }`}
+              style={{ '--ios-scrubber-progress': `${playbackProgress}%` } as React.CSSProperties}
+              aria-label={
+                isTimelineReady
+                  ? isClipRange
+                    ? 'Posisi di dalam klip'
+                    : 'Posisi video'
+                  : 'Belum ada video untuk diposisikan'
+              }
+              title={
+                isTimelineReady
+                  ? remainingTime > 0
+                    ? `Sisa ${formatTime(remainingTime)}`
+                    : 'Posisi video'
+                  : 'Belum ada video'
+              }
             />
           </div>
-        </div>
-      </div>
 
-      {/* ── STUDIO TRANSPORT BAR ── */}
-      <div
-        className={`ios26-glass w-full max-w-[480px] px-3.5 py-2 flex items-center gap-3 select-none flex-shrink-0 mt-3 transition-opacity duration-200 ${
-          isTransportDisabled ? 'opacity-70' : ''
-        }`}
-      >
-        {/* Primary Transport Play/Pause */}
-        <button
-          type="button"
-          onClick={togglePlay}
-          disabled={isTransportDisabled}
-          className={`ios26-play flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-white transition ${
-            isTransportDisabled ? 'cursor-not-allowed opacity-40 saturate-50' : 'active:scale-95'
-          }`}
-          aria-label={
-            isTransportDisabled
-              ? 'Belum ada video untuk diputar'
-              : isPlaying
-                ? 'Jeda preview'
-                : 'Putar preview'
-          }
-          title={
-            isTransportDisabled
-              ? 'Belum ada video untuk diputar'
-              : isPlaying
-                ? 'Jeda preview'
-                : 'Putar preview'
-          }
-        >
-          {isPlaying ? (
-            <PauseIcon className="h-4 w-4 text-white" />
-          ) : (
-            <PlayIcon className="h-4 w-4 ml-0.5 text-white" />
-          )}
-        </button>
+          {/* Secondary Controls: Mute + Playback Rate */}
+          <div className="flex flex-shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={toggleMute}
+              disabled={isTransportDisabled}
+              className={`ios26-glass-btn flex h-7 w-7 items-center justify-center text-slate-700 hover:text-slate-950 dark:text-white/70 dark:hover:text-white ${
+                isTransportDisabled ? 'cursor-not-allowed opacity-40' : ''
+              }`}
+              title={
+                isTransportDisabled
+                  ? 'Belum ada audio'
+                  : isMuted
+                    ? 'Nyalakan suara'
+                    : 'Matikan suara'
+              }
+            >
+              {isMuted ? (
+                <SpeakerXMarkIcon className="h-3.5 w-3.5 text-rose-500 dark:text-rose-400" />
+              ) : (
+                <SpeakerWaveIcon className="h-3.5 w-3.5" />
+              )}
+            </button>
 
-        {/* Timeline and Time Readout */}
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 flex items-center justify-between text-[11px] font-mono">
-            {isTimelineReady ? (
-              <>
-                {/* Playback in progress / paused at a known position */}
-                <span className="flex items-center gap-1.5 text-white font-semibold tabular-nums">
-                  <span
-                    aria-hidden
-                    className={`h-1.5 w-1.5 rounded-full transition-colors duration-200 ${
-                      isPlaying
-                        ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.85)]'
-                        : 'bg-white/30'
-                    }`}
-                  />
-                  {formatTime(timelineCurrent)}
-                </span>
-                <span
-                  className={`tabular-nums transition-colors duration-200 ${isPlaying ? 'text-white/55' : 'text-white/35'}`}
-                >
-                  {formatTime(timelineDuration)}
-                </span>
-              </>
-            ) : (
-              <>
-                {/* No playback: no source selected or media metadata not loaded yet */}
-                <span className="text-white/25">--:--</span>
-                <span className="text-white/20">--:--</span>
-              </>
-            )}
+            <button
+              type="button"
+              onClick={handleRateChange}
+              disabled={isTransportDisabled}
+              className={`ios26-glass-btn h-7 min-w-8 px-1.5 text-[10.5px] font-mono font-semibold text-slate-700 hover:text-slate-950 dark:text-white/80 dark:hover:text-white ${
+                isTransportDisabled ? 'cursor-not-allowed opacity-40' : ''
+              }`}
+              title={isTransportDisabled ? 'Belum ada video' : 'Kecepatan pemutaran'}
+            >
+              {playbackRate}x
+            </button>
           </div>
-          <input
-            type="range"
-            min={0}
-            max={isTimelineReady ? timelineDuration : 1}
-            step={isTimelineReady ? 0.1 : 1}
-            value={isTimelineReady ? Math.min(timelineCurrent, timelineDuration) : 0}
-            onChange={(e) => handleSeek(Number(e.target.value))}
-            disabled={!isTimelineReady}
-            className={`ios-media-scrubber block w-full ${
-              isTimelineReady ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
-            }`}
-            style={{ '--ios-scrubber-progress': `${playbackProgress}%` } as React.CSSProperties}
-            aria-label={
-              isTimelineReady
-                ? isClipRange
-                  ? 'Posisi di dalam klip'
-                  : 'Posisi video'
-                : 'Belum ada video untuk diposisikan'
-            }
-            title={
-              isTimelineReady
-                ? remainingTime > 0
-                  ? `Sisa ${formatTime(remainingTime)}`
-                  : 'Posisi video'
-                : 'Belum ada video'
-            }
-          />
         </div>
-
-        {/* Secondary Controls: Mute + Playback Rate */}
-        <div className="flex flex-shrink-0 items-center gap-1.5">
-          <button
-            type="button"
-            onClick={toggleMute}
-            disabled={isTransportDisabled}
-            className={`ios26-glass-btn flex h-7 w-7 items-center justify-center text-white/70 hover:text-white ${
-              isTransportDisabled ? 'cursor-not-allowed opacity-40' : ''
-            }`}
-            title={
-              isTransportDisabled ? 'Belum ada audio' : isMuted ? 'Nyalakan suara' : 'Matikan suara'
-            }
-          >
-            {isMuted ? (
-              <SpeakerXMarkIcon className="h-3.5 w-3.5 text-rose-400" />
-            ) : (
-              <SpeakerWaveIcon className="h-3.5 w-3.5" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleRateChange}
-            disabled={isTransportDisabled}
-            className={`ios26-glass-btn h-7 min-w-8 px-1.5 text-[10.5px] font-mono font-semibold text-white/80 hover:text-white ${
-              isTransportDisabled ? 'cursor-not-allowed opacity-40' : ''
-            }`}
-            title={isTransportDisabled ? 'Belum ada video' : 'Kecepatan pemutaran'}
-          >
-            {playbackRate}x
-          </button>
-        </div>
-      </div>
       </div>
     </div>
   );

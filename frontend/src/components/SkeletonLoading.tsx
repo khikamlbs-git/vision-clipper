@@ -5,10 +5,10 @@
 export function Shimmer({ className = '' }: { className?: string }) {
   return (
     <div
-      className={`relative overflow-hidden rounded-md bg-slate-800/70 ${className}`}
+      className={`relative overflow-hidden rounded-md bg-slate-200/80 dark:bg-slate-800/70 ${className}`}
       aria-hidden="true"
     >
-      <div className="absolute inset-0 -translate-x-full animate-[skeleton-shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-white/[0.07] to-transparent" />
+      <div className="absolute inset-0 -translate-x-full animate-[skeleton-shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-white/80 dark:via-white/[0.07] to-transparent" />
     </div>
   );
 }
@@ -26,7 +26,7 @@ export function AnalyzingSkeleton() {
       aria-label="Sedang menganalisis video"
     >
       {/* Header skeleton */}
-      <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 flex-shrink-0">
+      <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800/80 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Shimmer className="h-4 w-4 !rounded-full" />
           <Shimmer className="h-3 w-36" />
@@ -39,7 +39,7 @@ export function AnalyzingSkeleton() {
         {[0, 1, 2].map((i) => (
           <div
             key={i}
-            className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-3"
+            className="rounded-xl border border-slate-200 bg-slate-50/90 dark:border-slate-800/60 dark:bg-slate-900/40 p-3"
             style={{ animation: `skeleton-fade-in 0.5s ease-out ${i * 0.15}s both` }}
           >
             <div className="flex items-start gap-2.5">
@@ -72,7 +72,7 @@ export function RenderingSkeleton({ count = 4 }: { count?: number }) {
   return (
     <div className="flex flex-col h-full gap-2.5" role="status" aria-label="Sedang merender video">
       {/* Header skeleton */}
-      <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 flex-shrink-0">
+      <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800/80 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Shimmer className="h-4 w-4 !rounded-full" />
           <Shimmer className="h-3 w-40" />
@@ -81,7 +81,7 @@ export function RenderingSkeleton({ count = 4 }: { count?: number }) {
       </div>
 
       {/* Output banner skeleton */}
-      <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-2.5 flex items-center gap-2.5 flex-shrink-0">
+      <div className="rounded-xl border border-slate-200 bg-slate-50/90 dark:border-slate-800/60 dark:bg-slate-900/40 p-2.5 flex items-center gap-2.5 flex-shrink-0">
         <Shimmer className="h-8 w-8 !rounded-xl flex-shrink-0" />
         <div className="flex-1 space-y-1.5">
           <Shimmer className="h-2.5 w-28" />
@@ -95,7 +95,7 @@ export function RenderingSkeleton({ count = 4 }: { count?: number }) {
         {Array.from({ length: tiles }).map((_, i) => (
           <div
             key={i}
-            className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-2.5 flex flex-col gap-2"
+            className="rounded-xl border border-slate-200 bg-slate-50/90 dark:border-slate-800/60 dark:bg-slate-900/40 p-2.5 flex flex-col gap-2"
             style={{ animation: `skeleton-fade-in 0.5s ease-out ${i * 0.12}s both` }}
           >
             <div className="flex items-center gap-2.5">
@@ -109,7 +109,7 @@ export function RenderingSkeleton({ count = 4 }: { count?: number }) {
             <div className="relative flex-1 min-h-[64px] rounded-lg overflow-hidden">
               <Shimmer className="absolute inset-0 !rounded-lg" />
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="h-6 w-6 rounded-full bg-slate-700/80 border border-slate-600/60" />
+                <div className="h-6 w-6 rounded-full bg-slate-300/80 border border-slate-300 dark:bg-slate-700/80 dark:border-slate-600/60" />
               </div>
             </div>
             <Shimmer className="h-5 w-full !rounded-lg" />

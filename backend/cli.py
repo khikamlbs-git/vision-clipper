@@ -114,6 +114,27 @@ def stop_server():
     else:
         print("[INFO] Tidak ada server yang sedang berjalan.")
 
+def _open_browser(url: str) -> None:
+    """Open URL in browser without leaking xdg-open/Chrome stdout/stderr into the terminal."""
+    if sys.platform.startswith("linux"):
+        try:
+            import shutil
+            opener = shutil.which("xdg-open")
+            if opener:
+                subprocess.Popen(
+                    [opener, url],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                return
+        except Exception:
+            pass
+    import webbrowser
+    webbrowser.open(url)
+
+
 def start_server():
     """Start the Flask server as a detached background process."""
     check_and_prompt_ai_config()
@@ -124,15 +145,13 @@ def start_server():
         print(f"[INFO] VisionClipper Studio sudah berjalan (PID: {pid})!")
         print(f"[INFO] Buka di browser: {SERVER_URL}")
         print("[INFO] Untuk menghentikan: vision-clipper --stop")
-        import webbrowser
-        webbrowser.open(SERVER_URL)
+        _open_browser(SERVER_URL)
         return
 
     if is_server_alive():
         print("[INFO] Port 5050 sudah dipakai (mungkin instance sebelumnya).")
         print(f"[INFO] Buka di browser: {SERVER_URL}")
-        import webbrowser
-        webbrowser.open(SERVER_URL)
+        _open_browser(SERVER_URL)
         return
 
     print("=======================================================")
@@ -210,8 +229,7 @@ def start_server():
         print("    • Dari CMD  : vision-clipper --stop")
         print("=======================================================")
 
-        import webbrowser
-        webbrowser.open(SERVER_URL)
+        _open_browser(SERVER_URL)
     else:
         print()
         print("[ERROR] Server gagal start. Cek apakah port 5050 sudah dipakai.")

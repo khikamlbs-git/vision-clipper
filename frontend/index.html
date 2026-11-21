@@ -4,19 +4,40 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VisionClipper Studio — AI Video Clipper</title>
-    <meta name="description" content="AI Viral Video Clipper Studio dengan face tracking sinematik, subtitle kinetik, dan auto-export multi-format sosial media." />
+    <meta
+      name="description"
+      content="AI Viral Video Clipper Studio dengan face tracking sinematik, subtitle kinetik, dan auto-export multi-format sosial media."
+    />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=6" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=6" />
     <link rel="icon" type="image/png" sizes="256x256" href="/favicon.png?v=6" />
     <link rel="shortcut icon" href="/favicon.ico?v=6" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=6" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Montserrat:ital,wght@0,400;0,600;0,800;0,900;1,800&family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Rubik:wght@600;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Montserrat:ital,wght@0,400;0,600;0,800;0,900;1,800&family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Rubik:wght@600;800;900&family=Syne:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('vc-theme');
+          var theme = t === 'light' ? 'light' : 'dark';
+          var root = document.documentElement;
+          root.classList.toggle('dark', theme === 'dark');
+          root.style.colorScheme = theme;
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = 'dark';
+        }
+      })();
+    </script>
   </head>
-  <body class="bg-neutral-950 text-neutral-100 antialiased selection:bg-amber-500 selection:text-black">
+  <body
+    class="bg-slate-100 text-slate-900 dark:bg-neutral-950 dark:text-neutral-100 antialiased selection:bg-emerald-500/25 selection:text-emerald-950 dark:selection:bg-amber-500 dark:selection:text-black"
+  >
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

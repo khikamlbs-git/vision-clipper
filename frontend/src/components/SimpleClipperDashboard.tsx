@@ -178,14 +178,14 @@ const StepCard: React.FC<{
           className={`absolute left-[13px] top-8 -bottom-2 w-px ${
             animateConnector
               ? 'step-connector'
-              : 'bg-gradient-to-b from-emerald-500/60 to-emerald-500/10'
+              : 'bg-gradient-to-b from-emerald-500/50 to-emerald-500/10 dark:from-emerald-500/60 dark:to-emerald-500/10'
           }`}
           style={animateConnector ? { animationDelay: `${connectorDelay}ms` } : undefined}
           aria-hidden
         />
       )}
       <span
-        className={`absolute left-0 top-0.5 flex h-7 w-7 items-center justify-center rounded-full border border-emerald-500/40 bg-[#0b0f14] text-emerald-300 font-['Outfit'] font-extrabold text-[12px] shadow-[0_0_0_3px_rgba(16,185,129,0.08)] ${
+        className={`absolute left-0 top-0.5 flex h-7 w-7 items-center justify-center rounded-full border border-emerald-500/50 dark:border-emerald-500/40 bg-white dark:bg-[#0b0f14] text-emerald-700 dark:text-emerald-300 font-['Outfit'] font-extrabold text-[12px] shadow-[0_0_0_3px_rgba(16,185,129,0.08)] ${
           animateBadge ? 'step-badge' : ''
         }`}
         style={animateBadge ? { animationDelay: `${revealBase}ms` } : undefined}
@@ -194,8 +194,8 @@ const StepCard: React.FC<{
       </span>
       <div className="pb-3.5">
         <div className="flex items-center gap-1.5 mb-2 min-h-[20px]" title={hint}>
-          <span className="text-emerald-400 flex-shrink-0">{icon}</span>
-          <span className="text-[12px] font-bold text-slate-100 uppercase tracking-wider font-['Outfit'] truncate">
+          <span className="text-emerald-600 dark:text-emerald-400 flex-shrink-0">{icon}</span>
+          <span className="text-[12px] font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider font-['Outfit'] truncate">
             {title}
           </span>
           {right && <div className="ml-auto flex-shrink-0">{right}</div>}
@@ -223,8 +223,8 @@ const NumberPills: React.FC<{ value: number; onChange: (n: number) => void }> = 
           aria-pressed={active}
           className={`flex-1 h-6 rounded-md text-[11px] font-bold font-['Outfit'] border transition-all ${
             active
-              ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm'
-              : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+              ? 'bg-emerald-600 text-white border-emerald-500 dark:bg-emerald-500 dark:text-slate-950 dark:border-emerald-400 shadow-sm'
+              : 'bg-white text-slate-600 border-slate-200 hover:text-slate-900 hover:border-slate-300 dark:bg-slate-950/60 dark:text-slate-400 dark:border-slate-800 dark:hover:text-slate-200 dark:hover:border-slate-700'
           }`}
         >
           {n}
@@ -247,8 +247,12 @@ const MiniSwitch: React.FC<{
     role="switch"
     aria-checked={checked}
     title={title}
-    className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0e1218] ${
-      checked ? (accent === 'cyan' ? 'bg-cyan-500' : 'bg-emerald-500') : 'bg-slate-800'
+    className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0e1218] ${
+      checked
+        ? accent === 'cyan'
+          ? 'bg-cyan-500'
+          : 'bg-emerald-500'
+        : 'bg-slate-300 dark:bg-slate-800'
     }`}
   >
     <span
@@ -302,6 +306,7 @@ export const SimpleClipperDashboard: React.FC = () => {
   const [previewClipWords, setPreviewClipWords] = useState<PreviewWord[]>([]);
   // Trajektori smart crop klip yang sedang dipreview (sama dengan render).
   const [smartCropTrajectory, setSmartCropTrajectory] = useState<SmartCropTrajectory | null>(null);
+  const smartCropReqRef = useRef<number>(0);
 
   // Settings State
   const [clipCount, setClipCount] = useState<number>(3);
@@ -1189,10 +1194,11 @@ export const SimpleClipperDashboard: React.FC = () => {
     analysisIdOverride?: string,
     framingOverride?: FramingMode,
   ) => {
+    const reqId = ++smartCropReqRef.current;
     const id = analysisIdOverride ?? analysisId;
     const activeFraming = framingOverride ?? framingMode;
+    setSmartCropTrajectory(null);
     if (!id || activeFraming !== 'smart_crop') {
-      setSmartCropTrajectory(null);
       return;
     }
     try {
@@ -1201,8 +1207,10 @@ export const SimpleClipperDashboard: React.FC = () => {
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as SmartCropTrajectory;
+      if (smartCropReqRef.current !== reqId) return;
       setSmartCropTrajectory(Array.isArray(data.positions) ? data : null);
     } catch {
+      if (smartCropReqRef.current !== reqId) return;
       // Fallback: preview tetap pakai object-cover (center) tanpa mengikuti wajah.
       setSmartCropTrajectory(null);
     }
@@ -1419,6 +1427,7 @@ export const SimpleClipperDashboard: React.FC = () => {
               hashtags: firstClip.hashtags,
             });
             void loadClipWords(firstClip.index, newAnalysisId);
+            void loadSmartCropTrajectory(firstClip.index, newAnalysisId);
             setClipCandidates((prev) =>
               prev.map((candidate) =>
                 candidate.index === firstClip.index ? { ...candidate, previewed: true } : candidate,
@@ -1746,26 +1755,31 @@ export const SimpleClipperDashboard: React.FC = () => {
     setTimeout(() => setCopiedLogs(false), 1500);
   };
 
-  // Obsidian Slate Dark Theme Styling
+  // Obsidian Slate Dark & Crisp Light Theme Styling
   const themeClasses = {
-    bg: 'bg-[#0b0f14]',
-    header: 'bg-[#0f141b] border-slate-800/80 text-slate-100',
-    sidebar: 'bg-[#0e1218] border-slate-800/80 text-slate-200',
-    card: 'bg-[#131820] border-slate-800/80 text-slate-100',
+    bg: 'bg-slate-100 text-slate-900 dark:bg-[#0b0f14] dark:text-slate-100',
+    header:
+      'bg-white border-slate-200/90 text-slate-900 dark:bg-[#0f141b] dark:border-slate-800/80 dark:text-slate-100',
+    sidebar:
+      'bg-slate-50 border-slate-200/90 text-slate-800 dark:bg-[#0e1218] dark:border-slate-800/80 dark:text-slate-200',
+    card: 'bg-white border-slate-200/90 text-slate-900 dark:bg-[#131820] dark:border-slate-800/80 dark:text-slate-100',
     input:
-      'bg-[#0b0f14] border-slate-800 text-emerald-300 placeholder:text-slate-600 focus:border-emerald-600',
-    accentText: 'text-emerald-400',
+      'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 dark:bg-[#0b0f14] dark:border-slate-800 dark:text-emerald-300 dark:placeholder:text-slate-600 dark:focus:border-emerald-600',
+    accentText: 'text-emerald-600 dark:text-emerald-400',
     accentBg: 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs',
-    pillActive: 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40 shadow-xs',
-    outputBanner: 'bg-[#131820] border-slate-800',
+    pillActive:
+      'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-500/40 shadow-xs',
+    outputBanner: 'bg-slate-50 border-slate-200 dark:bg-[#161d26] dark:border-slate-800',
     actionBtn: 'bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-xs',
     // Sidebar tile states (shared across LAYOUT / SUBTITLE / option cards)
-    tileIdle: 'border-slate-800 bg-slate-950/50 hover:bg-slate-900/80 hover:border-slate-700',
+    tileIdle:
+      'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/50 dark:hover:bg-slate-900/80 dark:hover:border-slate-700',
     tileActive:
-      'border-emerald-500/80 bg-gradient-to-b from-emerald-950/50 to-emerald-950/20 shadow-[0_0_0_1px_rgba(16,185,129,0.25),0_4px_14px_-4px_rgba(16,185,129,0.35)] ring-1 ring-emerald-500/30',
-    chipActive: 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300',
+      'border-emerald-500 bg-gradient-to-b from-emerald-50 to-white shadow-[0_0_0_1px_rgba(16,185,129,0.2),0_4px_14px_-4px_rgba(16,185,129,0.2)] ring-1 ring-emerald-500/25 dark:border-emerald-500/80 dark:from-emerald-950/50 dark:to-emerald-950/20 dark:shadow-[0_0_0_1px_rgba(16,185,129,0.25),0_4px_14px_-4px_rgba(16,185,129,0.35)] dark:ring-emerald-500/30',
+    chipActive:
+      'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-500/15 dark:border-emerald-500/50 dark:text-emerald-300',
     chipIdle:
-      'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700',
+      'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:border-slate-700',
   };
 
   // Modal accessibility: Escape untuk menutup, focus trap, kembalikan fokus.
@@ -1787,10 +1801,12 @@ export const SimpleClipperDashboard: React.FC = () => {
 
   if (serverOffline) {
     return (
-      <div className="flex h-screen w-screen flex-col items-center justify-center bg-[#09090b] text-rose-400 font-['Instrument_Sans',_sans-serif] gap-4 p-4 text-center">
+      <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-100 dark:bg-[#09090b] text-rose-600 dark:text-rose-400 font-['Instrument_Sans',_sans-serif] gap-4 p-4 text-center">
         <div className="text-5xl">⚡</div>
-        <h1 className="text-xl font-bold text-white font-['Outfit']">SERVER OFFLINE</h1>
-        <p className="text-xs text-slate-400 max-w-sm">
+        <h1 className="text-xl font-bold text-slate-900 dark:text-white font-['Outfit']">
+          SERVER OFFLINE
+        </h1>
+        <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm">
           VisionClipper Studio telah dinonaktifkan. Anda dapat menutup tab ini atau menjalankan
           kembali lewat terminal.
         </p>
@@ -1806,7 +1822,7 @@ export const SimpleClipperDashboard: React.FC = () => {
           1. TOP APP HEADER
          ───────────────────────────────────────────────────────────── */}
       <header
-        className={`flex h-11 flex-shrink-0 items-center justify-between max-lg:h-auto max-lg:flex-wrap max-lg:gap-1.5 max-lg:px-3 max-lg:py-2 max-md:h-10 max-md:flex-nowrap max-md:gap-1.5 max-md:px-2.5 max-md:py-1 ${themeClasses.header} rounded-xl border px-4 shadow-lg z-20 mx-3 mt-2`}
+        className={`flex h-11 flex-shrink-0 items-center justify-between max-lg:h-auto max-lg:flex-wrap max-lg:gap-1.5 max-lg:px-3 max-lg:py-2 max-md:h-10 max-md:flex-nowrap max-md:gap-1.5 max-md:px-2.5 max-md:py-1 ${themeClasses.header} rounded-xl border px-4 shadow-sm dark:shadow-lg z-20 mx-3 mt-2`}
       >
         {/* Left: Brand Logo & Title */}
         <div className="flex items-center gap-1.5 max-lg:order-1 max-md:min-w-0">
@@ -1816,10 +1832,10 @@ export const SimpleClipperDashboard: React.FC = () => {
             className="h-8 max-md:h-6 w-auto object-contain select-none filter drop-shadow-sm"
           />
           <span className="hidden sm:inline-flex items-baseline gap-1 whitespace-nowrap select-none">
-            <span className="font-['Outfit',_sans-serif] text-[14px] font-extrabold tracking-tight text-white">
+            <span className="font-['Outfit',_sans-serif] text-[14px] font-extrabold tracking-tight text-slate-900 dark:text-white">
               Vision
             </span>
-            <span className="font-['Anton',_sans-serif] text-[14px] font-bold tracking-wide text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]">
+            <span className="font-['Anton',_sans-serif] text-[14px] font-bold tracking-wide text-emerald-600 dark:text-emerald-400 dark:drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]">
               Clipper
             </span>
           </span>
@@ -1828,7 +1844,7 @@ export const SimpleClipperDashboard: React.FC = () => {
         {/* Right: Active Processing Badge & Studio Settings Icon */}
         <div className="flex items-center gap-2 max-lg:order-2 max-lg:ml-auto max-md:order-3 max-md:gap-1.5">
           {status === 'processing' ? (
-            <div className="flex items-center gap-2 rounded-full bg-amber-950/60 border border-amber-500/40 px-2.5 py-0.5 max-md:px-2 max-md:py-0.5 text-xs font-bold text-amber-400 font-['Outfit',_sans-serif]">
+            <div className="flex items-center gap-2 rounded-full bg-amber-50 border border-amber-200 dark:bg-amber-950/60 dark:border-amber-500/40 px-2.5 py-0.5 max-md:px-2 max-md:py-0.5 text-xs font-bold text-amber-700 dark:text-amber-400 font-['Outfit',_sans-serif]">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
@@ -1836,18 +1852,18 @@ export const SimpleClipperDashboard: React.FC = () => {
               <span className="tracking-wider uppercase text-[11px] max-md:hidden">PROCESSING</span>
             </div>
           ) : status === 'complete' ? (
-            <div className="flex items-center gap-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/40 px-2.5 py-0.5 max-md:px-2 max-md:py-0.5 text-xs font-semibold text-emerald-400 font-['Outfit',_sans-serif]">
+            <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/60 dark:border-emerald-500/40 px-2.5 py-0.5 max-md:px-2 max-md:py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 font-['Outfit',_sans-serif]">
               <CheckIcon className="h-3 w-3 stroke-[3]" />
               <span className="tracking-wider uppercase text-[11px] max-md:hidden">COMPLETE</span>
             </div>
           ) : status === 'error' ? (
-            <div className="flex items-center gap-1.5 rounded-full bg-rose-950/60 border border-rose-500/40 px-2.5 py-0.5 max-md:px-2 max-md:py-0.5 text-xs font-semibold text-rose-400 font-['Outfit',_sans-serif]">
+            <div className="flex items-center gap-1.5 rounded-full bg-rose-50 border border-rose-200 dark:bg-rose-950/60 dark:border-rose-500/40 px-2.5 py-0.5 max-md:px-2 max-md:py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-400 font-['Outfit',_sans-serif]">
               <span className="h-2 w-2 rounded-full bg-rose-500"></span>
               <span className="tracking-wider uppercase text-[11px] max-md:hidden">ERROR</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/40 px-2.5 py-0.5 max-md:px-2 max-md:py-0.5 text-xs font-semibold text-emerald-400 font-['Outfit',_sans-serif]">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/60 dark:border-emerald-500/40 px-2.5 py-0.5 max-md:px-2 max-md:py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 font-['Outfit',_sans-serif]">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse"></span>
               <span className="tracking-wider uppercase text-[11px] max-md:hidden">READY</span>
             </div>
           )}
@@ -1858,23 +1874,23 @@ export const SimpleClipperDashboard: React.FC = () => {
             onClick={() => handleOpenSettings()}
             className={`relative flex h-8 w-8 max-md:h-7 max-md:w-7 items-center justify-center rounded-lg border transition-all shadow-sm active:scale-95 cursor-pointer ${
               aiConfig && !aiConfig.ready
-                ? 'border-amber-500/60 bg-amber-500/20 text-amber-300 ring-2 ring-amber-500/30 animate-pulse'
-                : 'border-slate-800 bg-slate-900/90 text-slate-300 hover:text-emerald-400 hover:border-emerald-500/40 hover:bg-slate-800'
+                ? 'border-amber-300 bg-amber-50 text-amber-600 ring-2 ring-amber-400/30 dark:border-amber-500/60 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30 animate-pulse'
+                : 'border-slate-200 bg-slate-50 text-slate-600 hover:text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50/70 dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-300 dark:hover:text-emerald-400 dark:hover:border-emerald-500/40 dark:hover:bg-slate-800'
             }`}
             title="Pengaturan Studio (Model AI, YouTube, TikTok)"
             aria-label="Buka pengaturan studio"
           >
             <Cog6ToothIcon
-              className={`h-4.5 w-4.5 max-md:h-4 max-md:w-4 stroke-[1.8] ${aiConfig && !aiConfig.ready ? 'text-amber-400' : 'text-slate-300 hover:text-emerald-400'}`}
+              className={`h-4.5 w-4.5 max-md:h-4 max-md:w-4 stroke-[1.8] ${aiConfig && !aiConfig.ready ? 'text-amber-600 dark:text-amber-400' : 'text-slate-600 hover:text-emerald-600 dark:text-slate-300 dark:hover:text-emerald-400'}`}
             />
             {aiConfig && !aiConfig.ready ? (
               <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500 border border-[#0f141b]"></span>
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500 border border-white dark:border-[#0f141b]"></span>
               </span>
             ) : ytConnected ? (
               <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400 border border-[#0f141b]"></span>
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400 border border-white dark:border-[#0f141b]"></span>
               </span>
             ) : null}
           </button>
@@ -1883,13 +1899,13 @@ export const SimpleClipperDashboard: React.FC = () => {
 
       {/* AI Warning Banner when not configured */}
       {aiConfig && !aiConfig.ready && (
-        <div className="flex items-center justify-between max-lg:flex-col max-lg:items-start max-lg:gap-2 max-lg:px-4 bg-gradient-to-r from-amber-950/90 via-amber-900/60 to-slate-950/90 border-b border-amber-500/40 px-5 py-2 text-xs text-amber-200 z-10 shadow-sm flex-shrink-0">
+        <div className="flex items-center justify-between max-lg:flex-col max-lg:items-start max-lg:gap-2 max-lg:px-4 bg-gradient-to-r from-amber-50 via-amber-100/70 to-white border-b border-amber-200 text-amber-900 dark:from-amber-950/90 dark:via-amber-900/60 dark:to-slate-950/90 dark:border-amber-500/40 dark:text-amber-200 px-5 py-2 text-xs z-10 shadow-sm flex-shrink-0">
           <div className="flex items-center gap-2.5">
-            <ExclamationTriangleIcon className="h-4 w-4 text-amber-400 flex-shrink-0" />
+            <ExclamationTriangleIcon className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
             <span>
-              <strong className="text-white">AI Engine belum terhubung:</strong> Masukkan API Key &
-              Provider (OpenRouter, OpenAI, Groq, DeepSeek, atau Custom) agar AI dapat menganalisis
-              momen viral.
+              <strong className="text-amber-950 dark:text-white">AI Engine belum terhubung:</strong>{' '}
+              Masukkan API Key & Provider (OpenRouter, OpenAI, Groq, DeepSeek, atau Custom) agar AI
+              dapat menganalisis momen viral.
             </span>
           </div>
           <button
@@ -1909,10 +1925,10 @@ export const SimpleClipperDashboard: React.FC = () => {
         {/* ── COLUMN 1: LEFT SIDEBAR (SETTINGS & CONTROLS) ── */}
         <aside
           ref={sidebarRef}
-          className={`flex min-h-0 flex-col rounded-2xl border ${themeClasses.sidebar} overflow-hidden max-lg:overflow-visible`}
+          className={`flex min-h-0 flex-col rounded-2xl border ${themeClasses.sidebar} shadow-sm dark:shadow-none overflow-hidden max-lg:overflow-visible`}
         >
           {/* PERSISTENT TERMINAL HEADER (Setup Video) */}
-          <div className="flex h-8 items-center justify-between px-3.5 border-b border-slate-800/80 bg-[#161b22] flex-shrink-0">
+          <div className="flex h-8 items-center justify-between px-3.5 border-b border-slate-200/90 dark:border-slate-800/80 bg-slate-100/90 dark:bg-[#161b22] flex-shrink-0">
             <div className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f56]" />
               <span className="h-2.5 w-2.5 rounded-full bg-[#ffbd2e]" />
@@ -1926,370 +1942,375 @@ export const SimpleClipperDashboard: React.FC = () => {
             {/* ═══ WORKFLOW STEPPER (numbered vertical timeline) ═══ */}
 
             {/* STEP 01 — SUMBER VIDEO */}
-          <StepCard
-            step={1}
-            icon={<CloudArrowDownIcon className="h-4 w-4 stroke-[2]" />}
-            title="Sumber Video"
-            hint="File, YouTube URL, atau Folder Clips"
-          >
-            <div className="relative">
-              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 flex h-4 w-4 items-center justify-center text-slate-500">
-                <LinkIcon className="h-3.5 w-3.5 stroke-[2]" />
-              </span>
-              <input
-                ref={sourceInputRef}
-                type="text"
-                value={videoPathInput}
-                onChange={(e) => {
-                  if (sourceKind === 'render-folder') resetWorkflow(false);
-                  setVideoPathInput(e.target.value);
-                  setSourceKind('video');
-                  if (sourceError) setSourceError(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter' || isProcessing) return;
-                  const value = videoPathInput.trim();
-                  if (!value) {
-                    setSourceError('Masukkan link YouTube atau path video terlebih dahulu.');
-                    return;
-                  }
-                  e.preventDefault();
-                  // URL / file video → langsung analisis.
-                  // Path folder hasil render (…/clips/…) → muat hasil render.
-                  if (!isUrlSource(value) && isRenderedClipsPath(value)) {
-                    void handleLoadRenderedFolder(value);
-                  } else if (sourceKind !== 'render-folder') {
-                    void handleStartProcessing();
-                  }
-                }}
-                aria-label="Sumber video: link YouTube atau path file video"
-                aria-invalid={Boolean(sourceError)}
-                aria-describedby={sourceError ? 'source-error' : 'source-hint'}
-                placeholder="Tempel link YouTube atau path video..."
-                className={`w-full rounded-lg border py-1.5 pl-8 pr-2.5 text-[12px] font-mono transition-all shadow-inner truncate ${themeClasses.input} ${
-                  sourceError
-                    ? 'border-rose-500/70 ring-1 ring-rose-500/30'
-                    : sourceKind === 'render-folder'
-                      ? 'border-emerald-500/60 ring-1 ring-emerald-500/30'
-                      : ''
-                }`}
-              />
-            </div>
-            {sourceError ? (
-              <p id="source-error" role="alert" className="mt-1 text-[11px] text-rose-400">
-                {sourceError}
-              </p>
-            ) : (
-              <p id="source-hint" className="mt-1 text-[11px] text-slate-500">
-                Tekan <kbd className="font-mono text-slate-400">Enter</kbd> untuk mulai analisis.
-              </p>
-            )}
-
-            <div className="grid grid-cols-2 gap-1.5 mt-1.5">
-              <button
-                type="button"
-                onClick={handlePickNativeFile}
-                disabled={isPickingFile || isPickingFolder || isProcessing}
-                className="group flex items-center justify-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/90 px-2 py-1.5 text-slate-400 hover:text-white hover:border-slate-700 hover:bg-slate-800 transition-colors disabled:opacity-50"
-                title="Pilih File Video dari Komputer (Native File Explorer)"
-              >
-                <VideoCameraIcon
-                  className={`h-3.5 w-3.5 stroke-[2] flex-shrink-0 ${isPickingFile ? 'animate-pulse text-cyan-400' : 'group-hover:text-cyan-400'}`}
+            <StepCard
+              step={1}
+              icon={<CloudArrowDownIcon className="h-4 w-4 stroke-[2]" />}
+              title="Sumber Video"
+              hint="File, YouTube URL, atau Folder Clips"
+            >
+              <div className="relative">
+                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 flex h-4 w-4 items-center justify-center text-slate-400 dark:text-slate-500">
+                  <LinkIcon className="h-3.5 w-3.5 stroke-[2]" />
+                </span>
+                <input
+                  ref={sourceInputRef}
+                  type="text"
+                  value={videoPathInput}
+                  onChange={(e) => {
+                    if (sourceKind === 'render-folder') resetWorkflow(false);
+                    setVideoPathInput(e.target.value);
+                    setSourceKind('video');
+                    if (sourceError) setSourceError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' || isProcessing) return;
+                    const value = videoPathInput.trim();
+                    if (!value) {
+                      setSourceError('Masukkan link YouTube atau path video terlebih dahulu.');
+                      return;
+                    }
+                    e.preventDefault();
+                    // URL / file video → langsung analisis.
+                    // Path folder hasil render (…/clips/…) → muat hasil render.
+                    if (!isUrlSource(value) && isRenderedClipsPath(value)) {
+                      void handleLoadRenderedFolder(value);
+                    } else if (sourceKind !== 'render-folder') {
+                      void handleStartProcessing();
+                    }
+                  }}
+                  aria-label="Sumber video: link YouTube atau path file video"
+                  aria-invalid={Boolean(sourceError)}
+                  aria-describedby={sourceError ? 'source-error' : 'source-hint'}
+                  placeholder="Tempel link YouTube atau path video..."
+                  className={`w-full rounded-lg border py-1.5 pl-8 pr-2.5 text-[12px] font-mono transition-all shadow-inner truncate ${themeClasses.input} ${
+                    sourceError
+                      ? 'border-rose-500/70 ring-1 ring-rose-500/30'
+                      : sourceKind === 'render-folder'
+                        ? 'border-emerald-500/60 ring-1 ring-emerald-500/30'
+                        : ''
+                  }`}
                 />
-                <span className="text-[11px] font-semibold truncate">File Video</span>
-              </button>
-              <button
-                type="button"
-                onClick={handlePickNativeFolder}
-                disabled={isPickingFile || isPickingFolder || isProcessing}
-                className="group flex items-center justify-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-2 py-1.5 text-emerald-400 hover:text-white hover:bg-emerald-900/50 hover:border-emerald-500/60 transition-colors disabled:opacity-50"
-                title="Pilih Folder Hasil Render di clips (Native Folder Explorer)"
-              >
-                <FolderOpenIcon
-                  className={`h-3.5 w-3.5 stroke-[2] flex-shrink-0 ${isPickingFolder ? 'animate-pulse text-emerald-300' : ''}`}
-                />
-                <span className="text-[11px] font-semibold truncate">Folder Render</span>
-              </button>
-            </div>
+              </div>
+              {sourceError ? (
+                <p
+                  id="source-error"
+                  role="alert"
+                  className="mt-1 text-[11px] text-rose-600 dark:text-rose-400"
+                >
+                  {sourceError}
+                </p>
+              ) : (
+                <p id="source-hint" className="mt-1 text-[11px] text-slate-500">
+                  Tekan <kbd className="font-mono text-slate-700 dark:text-slate-400">Enter</kbd>{' '}
+                  untuk mulai analisis.
+                </p>
+              )}
 
-            {sourceKind === 'render-folder' && (
-              <div className="mt-1.5 flex items-center justify-between text-[11px] font-semibold text-emerald-300 bg-emerald-950/50 border border-emerald-500/30 rounded-lg px-2.5 py-1 shadow-xs">
-                <div className="flex items-center gap-1.5 truncate mr-2">
-                  <CheckCircleIcon className="h-3.5 w-3.5 flex-shrink-0 text-emerald-400" />
-                  <span className="truncate">
-                    Folder render aktif ({generatedClips.length} klip)
-                  </span>
-                </div>
+              <div className="grid grid-cols-2 gap-1.5 mt-1.5">
                 <button
                   type="button"
-                  onClick={() => resetWorkflow(true)}
-                  className="text-slate-400 hover:text-white underline font-normal flex-shrink-0"
-                  title="Kembali ke mode input video baru"
+                  onClick={handlePickNativeFile}
+                  disabled={isPickingFile || isPickingFolder || isProcessing}
+                  className="group flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-slate-600 hover:text-slate-900 hover:border-slate-300 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-400 dark:hover:text-white dark:hover:border-slate-700 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  title="Pilih File Video dari Komputer (Native File Explorer)"
                 >
-                  Reset
+                  <VideoCameraIcon
+                    className={`h-3.5 w-3.5 stroke-[2] flex-shrink-0 ${isPickingFile ? 'animate-pulse text-cyan-600 dark:text-cyan-400' : 'group-hover:text-cyan-600 dark:group-hover:text-cyan-400'}`}
+                  />
+                  <span className="text-[11px] font-semibold truncate">File Video</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePickNativeFolder}
+                  disabled={isPickingFile || isPickingFolder || isProcessing}
+                  className="group flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100 hover:border-emerald-300 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-400 dark:hover:text-white dark:hover:bg-emerald-900/50 dark:hover:border-emerald-500/60 transition-colors disabled:opacity-50"
+                  title="Pilih Folder Hasil Render di clips (Native Folder Explorer)"
+                >
+                  <FolderOpenIcon
+                    className={`h-3.5 w-3.5 stroke-[2] flex-shrink-0 ${isPickingFolder ? 'animate-pulse text-emerald-600 dark:text-emerald-300' : ''}`}
+                  />
+                  <span className="text-[11px] font-semibold truncate">Folder Render</span>
                 </button>
               </div>
-            )}
-          </StepCard>
 
-          {/* STEP 02 — JUMLAH KLIP */}
-          <StepCard
-            step={2}
-            icon={<Square3Stack3DIcon className="h-4 w-4 stroke-[2]" />}
-            title="Output Klip"
-            hint="Jumlah klip yang dihasilkan"
-          >
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-400">
-                <ScissorsIcon className="h-3.5 w-3.5 text-emerald-400 stroke-[2]" />
-                <span>Jumlah Klip</span>
-              </span>
-              <span className="font-['Outfit'] font-extrabold text-[12px] px-1.5 py-0.5 rounded-md border bg-emerald-950/60 text-emerald-300 border-emerald-500/40">
-                {clipCount}
-              </span>
-            </div>
-            <NumberPills value={clipCount} onChange={setClipCount} />
-          </StepCard>
-
-          {/* STEP 03 — FRAMING / LAYOUT */}
-          <StepCard
-            step={3}
-            icon={<PhotoIcon className="h-4 w-4 stroke-[2]" />}
-            title="Framing 9:16"
-            hint="Gaya framing video"
-          >
-            <div className="grid grid-cols-3 gap-1.5">
-              {[
-                {
-                  id: 'smart_crop' as FramingMode,
-                  label: 'Smart',
-                  sub: '9:16',
-                  glyph: (
-                    <div className="h-6 w-[13px] rounded-[3px] border border-emerald-400/70 bg-emerald-500/15" />
-                  ),
-                },
-                {
-                  id: 'fit_blur' as FramingMode,
-                  label: 'Fit Blur',
-                  sub: '16:9',
-                  glyph: (
-                    <div className="h-[15px] w-7 rounded-[3px] border border-cyan-400/70 bg-cyan-500/10" />
-                  ),
-                },
-                {
-                  id: 'split_screen' as FramingMode,
-                  label: 'Dual',
-                  sub: '50:50',
-                  glyph: (
-                    <div className="flex flex-col gap-[2px]">
-                      <div className="h-[9px] w-6 rounded-[2px] bg-cyan-500/30 border border-cyan-500/60" />
-                      <div className="h-[9px] w-6 rounded-[2px] bg-amber-500/30 border border-amber-500/60" />
-                    </div>
-                  ),
-                },
-              ].map((o) => {
-                const isActive = framingMode === o.id;
-                return (
+              {sourceKind === 'render-folder' && (
+                <div className="mt-1.5 flex items-center justify-between text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/50 dark:border-emerald-500/30 rounded-lg px-2.5 py-1 shadow-xs">
+                  <div className="flex items-center gap-1.5 truncate mr-2">
+                    <CheckCircleIcon className="h-3.5 w-3.5 flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <span className="truncate">
+                      Folder render aktif ({generatedClips.length} klip)
+                    </span>
+                  </div>
                   <button
-                    key={o.id}
                     type="button"
-                    onClick={() => {
-                      setFramingMode(o.id);
-                      if (previewClipRange && !previewOutputClip) {
-                        // Recompute trajectory when re-entering smart_crop preview.
-                        void loadSmartCropTrajectory(
-                          clipCandidates.find((c) => c.start === previewClipRange.start)?.index ??
-                            1,
-                          undefined,
-                          o.id,
-                        );
-                      } else {
-                        setSmartCropTrajectory(null);
-                      }
-                    }}
-                    title={o.label}
-                    className={`${isActive ? themeClasses.tileActive : themeClasses.tileIdle} relative flex flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 transition-all`}
+                    onClick={() => resetWorkflow(true)}
+                    className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white underline font-normal flex-shrink-0"
+                    title="Kembali ke mode input video baru"
                   >
-                    <span className="flex h-6 items-center justify-center">{o.glyph}</span>
-                    <span
-                      className={`text-[11px] font-bold leading-none ${isActive ? 'text-emerald-300' : 'text-slate-200'}`}
-                    >
-                      {o.label}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-mono leading-none">
-                      {o.sub}
-                    </span>
+                    Reset
                   </button>
-                );
-              })}
-            </div>
-          </StepCard>
-
-          {/* STEP 04 — CAPTION / SUBTITLE */}
-          <StepCard
-            step={4}
-            icon={<SwatchIcon className="h-4 w-4 stroke-[2]" />}
-            title="Subtitle"
-            hint="Klik untuk pakai, klik lagi untuk lepas"
-          >
-            <div className="grid grid-cols-2 gap-1.5">
-              {SUBTITLE_PRESETS.map((preset) => {
-                const isSelected = selectedPresetId === preset.presetId;
-                return (
-                  <button
-                    key={preset.presetId}
-                    onClick={() => handleSelectPreset(preset)}
-                    role="checkbox"
-                    aria-checked={isSelected}
-                    className={`${isSelected ? themeClasses.tileActive : themeClasses.tileIdle} flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all`}
-                  >
-                    <span
-                      className="h-3 w-3 rounded-full flex-shrink-0 border border-white/20"
-                      style={{ backgroundColor: preset.highlightColor }}
-                    />
-                    <span
-                      className={`text-[11px] font-bold truncate ${isSelected ? 'text-emerald-300' : 'text-slate-200'}`}
-                    >
-                      {preset.name}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {selectedPresetId !== 'no_subtitle' && (
-              <div className="mt-1.5 flex flex-col gap-1.5">
-                <div className="flex items-center gap-2 rounded-lg border border-slate-800/70 bg-slate-950/40 px-2 py-1.5">
-                  <AdjustmentsHorizontalIcon className="h-3.5 w-3.5 text-emerald-400 flex-shrink-0" />
-                  <input
-                    type="range"
-                    min="35"
-                    max="80"
-                    step="1"
-                    value={subPosition}
-                    onChange={(e) => setSubPosition(Number(e.target.value))}
-                    className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                    title="Area aman 35–80% agar tidak tertutup UI TikTok"
-                  />
-                  <span className="w-9 text-right font-mono text-[11px] text-emerald-400 font-bold">
-                    {subPosition}%
-                  </span>
                 </div>
-                <div className="flex items-center gap-1">
-                  {[
-                    { v: 50, l: 'Tengah' },
-                    { v: 68, l: 'TikTok' },
-                    { v: 80, l: 'Bawah' },
-                  ].map((b) => (
-                    <button
-                      key={b.v}
-                      type="button"
-                      onClick={() => setSubPosition(b.v)}
-                      className={`flex-1 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
-                        subPosition === b.v ? themeClasses.chipActive : themeClasses.chipIdle
-                      }`}
-                    >
-                      {b.l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </StepCard>
-
-          {/* STEP 05 — BRANDING / WATERMARK */}
-          <StepCard
-            step={5}
-            icon={<ShieldCheckIcon className="h-4 w-4 stroke-[2]" />}
-            title="Branding"
-            hint="Label kaca sumber & akun"
-            isLast
-            right={
-              <MiniSwitch
-                checked={watermarkEnabled}
-                onChange={() => setWatermarkEnabled(!watermarkEnabled)}
-                accent="cyan"
-                title="Aktifkan / Nonaktifkan Watermark Glass Effect"
-              />
-            }
-          >
-            {watermarkEnabled ? (
-              <div className="grid grid-cols-1 gap-1.5">
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="flex h-6 w-6 items-center justify-center rounded-md border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 text-[11px] flex-shrink-0"
-                    title="Sumber (Kiri Atas)"
-                  >
-                    ▶
-                  </span>
-                  <input
-                    type="text"
-                    value={sourceWatermark}
-                    onChange={(e) => setSourceWatermark(e.target.value)}
-                    placeholder="Sumber / Channel (kiri atas)"
-                    className="flex-1 h-7 px-2 rounded-lg bg-slate-900/80 border border-slate-800 text-[12px] text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/60 focus:ring-1 focus:ring-cyan-500/40 transition-all"
-                  />
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="flex h-6 w-6 items-center justify-center rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-400 text-[12px] font-bold flex-shrink-0"
-                    title="Akun Clipper (Kanan Atas)"
-                  >
-                    @
-                  </span>
-                  <input
-                    type="text"
-                    value={accountWatermark}
-                    onChange={(e) => setAccountWatermark(e.target.value)}
-                    placeholder="@visionclipper (kanan atas)"
-                    className="flex-1 h-7 px-2 rounded-lg bg-slate-900/80 border border-slate-800 text-[12px] text-amber-300 placeholder-slate-600 focus:outline-none focus:border-amber-500/60 focus:ring-1 focus:ring-amber-500/40 transition-all font-mono"
-                  />
-                </div>
-              </div>
-            ) : (
-              <p className="text-[11px] text-slate-500">
-                Watermark nonaktif — video bersih tanpa label.
-              </p>
-            )}
-          </StepCard>
-
-          {/* STICKY BOTTOM GENERATE BUTTON */}
-          <div className="mt-auto pt-2.5 flex items-center gap-2 sticky bottom-0 bg-[#0e1218] border-t border-slate-800/80 pb-1.5 max-lg:static max-lg:mt-2">
-            <button
-              onClick={sourceKind === 'render-folder' ? undefined : handleStartProcessing}
-              disabled={isProcessing || sourceKind === 'render-folder'}
-              className={`flex flex-1 h-10 items-center justify-center gap-2 rounded-xl text-xs font-bold transition-all ${
-                sourceKind === 'render-folder'
-                  ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 cursor-default'
-                  : themeClasses.actionBtn
-              } ${isProcessing ? 'opacity-70 cursor-wait' : 'active:scale-[0.98]'}`}
-            >
-              {isProcessing ? (
-                <>
-                  <span>Processing...</span>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                </>
-              ) : sourceKind === 'render-folder' ? (
-                <span className="flex items-center gap-1.5">
-                  <CheckCircleIcon className="h-4 w-4 text-emerald-400" />
-                  <span>Hasil Render Siap Diposting ({generatedClips.length} Klip)</span>
-                </span>
-              ) : (
-                <span>✦ Analisis {clipCount} Klip</span>
               )}
-            </button>
+            </StepCard>
 
-            {isProcessing && (
+            {/* STEP 02 — JUMLAH KLIP */}
+            <StepCard
+              step={2}
+              icon={<Square3Stack3DIcon className="h-4 w-4 stroke-[2]" />}
+              title="Output Klip"
+              hint="Jumlah klip yang dihasilkan"
+            >
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-600 dark:text-slate-400">
+                  <ScissorsIcon className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 stroke-[2]" />
+                  <span>Jumlah Klip</span>
+                </span>
+                <span className="font-['Outfit'] font-extrabold text-[12px] px-1.5 py-0.5 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-500/40">
+                  {clipCount}
+                </span>
+              </div>
+              <NumberPills value={clipCount} onChange={setClipCount} />
+            </StepCard>
+
+            {/* STEP 03 — FRAMING / LAYOUT */}
+            <StepCard
+              step={3}
+              icon={<PhotoIcon className="h-4 w-4 stroke-[2]" />}
+              title="Framing 9:16"
+              hint="Gaya framing video"
+            >
+              <div className="grid grid-cols-3 gap-1.5">
+                {[
+                  {
+                    id: 'smart_crop' as FramingMode,
+                    label: 'Smart',
+                    sub: '9:16',
+                    glyph: (
+                      <div className="h-6 w-[13px] rounded-[3px] border border-emerald-500/70 dark:border-emerald-400/70 bg-emerald-500/15" />
+                    ),
+                  },
+                  {
+                    id: 'fit_blur' as FramingMode,
+                    label: 'Fit Blur',
+                    sub: '16:9',
+                    glyph: (
+                      <div className="h-[15px] w-7 rounded-[3px] border border-cyan-500/70 dark:border-cyan-400/70 bg-cyan-500/15 dark:bg-cyan-500/10" />
+                    ),
+                  },
+                  {
+                    id: 'split_screen' as FramingMode,
+                    label: 'Dual',
+                    sub: '50:50',
+                    glyph: (
+                      <div className="flex flex-col gap-[2px]">
+                        <div className="h-[9px] w-6 rounded-[2px] bg-cyan-500/30 border border-cyan-500/60" />
+                        <div className="h-[9px] w-6 rounded-[2px] bg-amber-500/30 border border-amber-500/60" />
+                      </div>
+                    ),
+                  },
+                ].map((o) => {
+                  const isActive = framingMode === o.id;
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => {
+                        setFramingMode(o.id);
+                        if (previewClipRange && !previewOutputClip) {
+                          // Recompute trajectory when re-entering smart_crop preview.
+                          void loadSmartCropTrajectory(
+                            clipCandidates.find((c) => c.start === previewClipRange.start)?.index ??
+                              1,
+                            undefined,
+                            o.id,
+                          );
+                        } else {
+                          setSmartCropTrajectory(null);
+                        }
+                      }}
+                      title={o.label}
+                      className={`${isActive ? themeClasses.tileActive : themeClasses.tileIdle} relative flex flex-col items-center justify-center gap-1 rounded-lg border px-1 py-2 transition-all`}
+                    >
+                      <span className="flex h-6 items-center justify-center">{o.glyph}</span>
+                      <span
+                        className={`text-[11px] font-bold leading-none ${isActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}`}
+                      >
+                        {o.label}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono leading-none">
+                        {o.sub}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </StepCard>
+
+            {/* STEP 04 — CAPTION / SUBTITLE */}
+            <StepCard
+              step={4}
+              icon={<SwatchIcon className="h-4 w-4 stroke-[2]" />}
+              title="Subtitle"
+              hint="Klik untuk pakai, klik lagi untuk lepas"
+            >
+              <div className="grid grid-cols-2 gap-1.5">
+                {SUBTITLE_PRESETS.map((preset) => {
+                  const isSelected = selectedPresetId === preset.presetId;
+                  return (
+                    <button
+                      key={preset.presetId}
+                      onClick={() => handleSelectPreset(preset)}
+                      role="checkbox"
+                      aria-checked={isSelected}
+                      className={`${isSelected ? themeClasses.tileActive : themeClasses.tileIdle} flex items-center gap-2 rounded-lg border px-2 py-1.5 transition-all`}
+                    >
+                      <span
+                        className="h-3 w-3 rounded-full flex-shrink-0 border border-slate-900/15 dark:border-white/20"
+                        style={{ backgroundColor: preset.highlightColor }}
+                      />
+                      <span
+                        className={`text-[11px] font-bold truncate ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}`}
+                      >
+                        {preset.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedPresetId !== 'no_subtitle' && (
+                <div className="mt-1.5 flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white dark:border-slate-800/70 dark:bg-slate-950/40 px-2 py-1.5">
+                    <AdjustmentsHorizontalIcon className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                    <input
+                      type="range"
+                      min="35"
+                      max="80"
+                      step="1"
+                      value={subPosition}
+                      onChange={(e) => setSubPosition(Number(e.target.value))}
+                      className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-600 dark:accent-emerald-500"
+                      title="Area aman 35–80% agar tidak tertutup UI TikTok"
+                    />
+                    <span className="w-9 text-right font-mono text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
+                      {subPosition}%
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {[
+                      { v: 50, l: 'Tengah' },
+                      { v: 68, l: 'TikTok' },
+                      { v: 80, l: 'Bawah' },
+                    ].map((b) => (
+                      <button
+                        key={b.v}
+                        type="button"
+                        onClick={() => setSubPosition(b.v)}
+                        className={`flex-1 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
+                          subPosition === b.v ? themeClasses.chipActive : themeClasses.chipIdle
+                        }`}
+                      >
+                        {b.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </StepCard>
+
+            {/* STEP 05 — BRANDING / WATERMARK */}
+            <StepCard
+              step={5}
+              icon={<ShieldCheckIcon className="h-4 w-4 stroke-[2]" />}
+              title="Branding"
+              hint="Label kaca sumber & akun"
+              isLast
+              right={
+                <MiniSwitch
+                  checked={watermarkEnabled}
+                  onChange={() => setWatermarkEnabled(!watermarkEnabled)}
+                  accent="cyan"
+                  title="Aktifkan / Nonaktifkan Watermark Glass Effect"
+                />
+              }
+            >
+              {watermarkEnabled ? (
+                <div className="grid grid-cols-1 gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className="flex h-6 w-6 items-center justify-center rounded-md border border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-400 text-[11px] flex-shrink-0"
+                      title="Sumber (Kiri Atas)"
+                    >
+                      ▶
+                    </span>
+                    <input
+                      type="text"
+                      value={sourceWatermark}
+                      onChange={(e) => setSourceWatermark(e.target.value)}
+                      placeholder="Sumber / Channel (kiri atas)"
+                      className="flex-1 h-7 px-2 rounded-lg bg-white border border-slate-300 text-[12px] text-slate-900 placeholder-slate-400 dark:bg-slate-900/80 dark:border-slate-800 dark:text-slate-200 dark:placeholder-slate-600 focus:outline-none focus:border-cyan-500/60 focus:ring-1 focus:ring-cyan-500/40 transition-all"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className="flex h-6 w-6 items-center justify-center rounded-md border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400 text-[12px] font-bold flex-shrink-0"
+                      title="Akun Clipper (Kanan Atas)"
+                    >
+                      @
+                    </span>
+                    <input
+                      type="text"
+                      value={accountWatermark}
+                      onChange={(e) => setAccountWatermark(e.target.value)}
+                      placeholder="@visionclipper (kanan atas)"
+                      className="flex-1 h-7 px-2 rounded-lg bg-white border border-slate-300 text-[12px] text-amber-700 placeholder-slate-400 dark:bg-slate-900/80 dark:border-slate-800 dark:text-amber-300 dark:placeholder-slate-600 focus:outline-none focus:border-amber-500/60 focus:ring-1 focus:ring-amber-500/40 transition-all font-mono"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-500">
+                  Watermark nonaktif — video bersih tanpa label.
+                </p>
+              )}
+            </StepCard>
+
+            {/* STICKY BOTTOM GENERATE BUTTON */}
+            <div className="mt-auto pt-2.5 flex items-center gap-2 sticky bottom-0 bg-slate-50/95 dark:bg-[#0e1218] border-t border-slate-200/90 dark:border-slate-800/80 pb-1.5 max-lg:static max-lg:mt-2">
               <button
-                onClick={handleStopProcessing}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-950/80 border border-rose-600/40 text-rose-400 hover:bg-rose-900 transition-all shadow-xs active:scale-95 flex-shrink-0"
-                title="Hentikan Proses (Cancel)"
-                aria-label="Hentikan proses"
+                onClick={sourceKind === 'render-folder' ? undefined : handleStartProcessing}
+                disabled={isProcessing || sourceKind === 'render-folder'}
+                className={`flex flex-1 h-10 items-center justify-center gap-2 rounded-xl text-xs font-bold transition-all ${
+                  sourceKind === 'render-folder'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-500/40 cursor-default'
+                    : themeClasses.actionBtn
+                } ${isProcessing ? 'opacity-70 cursor-wait' : 'active:scale-[0.98]'}`}
               >
-                <StopIconSolid className="h-4 w-4" />
+                {isProcessing ? (
+                  <>
+                    <span>Processing...</span>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  </>
+                ) : sourceKind === 'render-folder' ? (
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircleIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>Hasil Render Siap Diposting ({generatedClips.length} Klip)</span>
+                  </span>
+                ) : (
+                  <span>✦ Analisis {clipCount} Klip</span>
+                )}
               </button>
-            )}
-          </div>
+
+              {isProcessing && (
+                <button
+                  onClick={handleStopProcessing}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/80 dark:border-rose-600/40 dark:text-rose-400 dark:hover:bg-rose-900 transition-all shadow-xs active:scale-95 flex-shrink-0"
+                  title="Hentikan Proses (Cancel)"
+                  aria-label="Hentikan proses"
+                >
+                  <StopIconSolid className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
         </aside>
 
@@ -2303,7 +2324,6 @@ export const SimpleClipperDashboard: React.FC = () => {
               previewOutputClip ? previewOutputClip.path : resolvedVideoPath || videoPathInput
             }
             previewClip={previewOutputClip ? null : previewClipRange}
-            clipTitle={previewOutputClip ? previewOutputClip.title : activeClipMeta?.title}
             clipWords={previewClipWords}
             smartCropTrajectory={previewOutputClip ? null : smartCropTrajectory}
             isRenderedClip={Boolean(previewOutputClip)}
@@ -2320,10 +2340,10 @@ export const SimpleClipperDashboard: React.FC = () => {
           {/* ── TOP SECTION: 60% WORKSPACE (CLIP PREVIEW / OUTPUT / STATUS) ── */}
           <div className="flex-[6] min-h-0 flex flex-col overflow-hidden max-lg:flex-none">
             <div
-              className={`rounded-2xl border border-slate-800/80 ${themeClasses.card} flex flex-col h-full max-lg:h-[400px] overflow-hidden`}
+              className={`rounded-2xl border ${themeClasses.card} shadow-sm dark:shadow-none flex flex-col h-full max-lg:h-[400px] overflow-hidden`}
             >
               {/* PERSISTENT TERMINAL HEADER (all phases) */}
-              <div className="flex h-8 items-center justify-between px-3.5 border-b border-slate-800/80 bg-[#161b22] flex-shrink-0">
+              <div className="flex h-8 items-center justify-between px-3.5 border-b border-slate-200/90 dark:border-slate-800/80 bg-slate-100/90 dark:bg-[#161b22] flex-shrink-0">
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f56]" />
                   <span className="h-2.5 w-2.5 rounded-full bg-[#ffbd2e]" />
@@ -2333,14 +2353,14 @@ export const SimpleClipperDashboard: React.FC = () => {
                 </div>
                 {phase === 'complete' && (
                   <div className="flex items-center gap-2">
-                    <span className="text-[12px] text-slate-400 font-medium">
+                    <span className="text-[12px] text-slate-600 dark:text-slate-400 font-medium">
                       {generatedClips.length > 0
                         ? `${generatedClips.length} Klip Dihasilkan`
                         : 'Folder Siap'}
                     </span>
                     <button
                       onClick={() => resetWorkflow(true)}
-                      className="flex items-center gap-1 text-[11px] font-mono text-slate-400 hover:text-white bg-slate-800/60 px-2 py-0.5 rounded border border-slate-700 transition-colors"
+                      className="flex items-center gap-1 text-[11px] font-mono text-slate-600 hover:text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-300 hover:bg-slate-50 dark:text-slate-400 dark:hover:text-white dark:bg-slate-800/60 dark:border-slate-700 transition-colors"
                     >
                       <ArrowPathIcon className="h-3 w-3 stroke-[2]" />
                       <span>Baru</span>
@@ -2353,8 +2373,8 @@ export const SimpleClipperDashboard: React.FC = () => {
               {phase === 'config' && (
                 <div className="flex flex-col h-full overflow-hidden">
                   <div className="flex flex-1 flex-col items-center justify-center p-4 py-6 text-center text-slate-500">
-                    <FolderArrowDownIcon className="h-10 w-10 stroke-[1.5] mb-2.5 opacity-30 text-emerald-400" />
-                    <p className="text-xs font-semibold text-slate-300">
+                    <FolderArrowDownIcon className="h-10 w-10 stroke-[1.5] mb-2.5 opacity-60 dark:opacity-30 text-emerald-600 dark:text-emerald-400" />
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                       Belum ada klip yang di-generate
                     </p>
                     <p className="text-[12px] text-slate-500 max-w-xs mt-1">
@@ -2379,11 +2399,13 @@ export const SimpleClipperDashboard: React.FC = () => {
                 <div className={`${themeClasses.card} p-3.5 flex flex-col h-full overflow-hidden`}>
                   {/* Error Notification Banner if render failed */}
                   {renderErrorMessage && (
-                    <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs shadow-lg mb-2 flex-shrink-0">
+                    <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 dark:bg-rose-500/10 dark:border-rose-500/30 dark:text-rose-300 text-xs shadow-sm dark:shadow-lg mb-2 flex-shrink-0">
                       <span className="text-base leading-none">⚠️</span>
                       <div className="flex-1">
-                        <div className="font-bold text-rose-200">Gagal Merender Klip:</div>
-                        <div className="mt-0.5 text-rose-300/90 text-[12px]">
+                        <div className="font-bold text-rose-900 dark:text-rose-200">
+                          Gagal Merender Klip:
+                        </div>
+                        <div className="mt-0.5 text-rose-700 dark:text-rose-300/90 text-[12px]">
                           {renderErrorMessage}
                         </div>
                       </div>
@@ -2391,7 +2413,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                   )}
 
                   {/* Header with back + re-analyze + confirmed count */}
-                  <div className="flex items-center justify-between mb-2.5 border-b border-slate-800/80 pb-2 flex-shrink-0">
+                  <div className="flex items-center justify-between mb-2.5 border-b border-slate-200 dark:border-slate-800/80 pb-2 flex-shrink-0">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => {
@@ -2400,21 +2422,21 @@ export const SimpleClipperDashboard: React.FC = () => {
                           setSmartCropTrajectory(null);
                         }}
                         disabled={isProcessing}
-                        className="flex items-center gap-1 text-[12px] text-slate-400 hover:text-white transition-colors"
+                        className="flex items-center gap-1 text-[12px] text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
                       >
                         <ArrowLeftIcon className="h-3.5 w-3.5 stroke-[2]" />
                         <span>Kembali</span>
                       </button>
-                      <span className="text-slate-700">|</span>
+                      <span className="text-slate-300 dark:text-slate-700">|</span>
                       <button
                         onClick={handleStartProcessing}
-                        className="flex items-center gap-1 text-[12px] text-slate-400 hover:text-white transition-colors"
+                        className="flex items-center gap-1 text-[12px] text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
                       >
                         <ArrowPathIcon className="h-3.5 w-3.5 stroke-[2]" />
                         <span>Re-analyze</span>
                       </button>
                     </div>
-                    <span className="text-[12px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                    <span className="text-[12px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20 px-2 py-0.5 rounded-full">
                       {confirmedClipCount}/{clipCandidates.length} Dikonfirmasi
                     </span>
                   </div>
@@ -2437,10 +2459,10 @@ export const SimpleClipperDashboard: React.FC = () => {
                           key={clip.index}
                           className={`rounded-xl border p-3 transition-all cursor-pointer ${
                             clip.decision === 'approved'
-                              ? 'border-emerald-500/50 bg-emerald-950/20'
+                              ? 'border-emerald-300 bg-emerald-50/70 dark:border-emerald-500/50 dark:bg-emerald-950/20'
                               : clip.decision === 'skipped'
-                                ? 'border-slate-800/60 bg-slate-900/40 opacity-60'
-                                : 'border-amber-500/30 bg-amber-950/10'
+                                ? 'border-slate-200 bg-slate-100/80 opacity-65 dark:border-slate-800/60 dark:bg-slate-900/40 dark:opacity-60'
+                                : 'border-amber-200 bg-amber-50/50 dark:border-amber-500/30 dark:bg-amber-950/10'
                           }`}
                           onClick={() => previewCandidate(clip)}
                         >
@@ -2450,21 +2472,21 @@ export const SimpleClipperDashboard: React.FC = () => {
                               <div
                                 className={`flex h-6 w-6 items-center justify-center rounded-lg text-[11px] font-mono font-bold flex-shrink-0 ${
                                   clip.decision === 'approved'
-                                    ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-300 dark:bg-emerald-600/20 dark:text-emerald-400 dark:border-emerald-500/30'
                                     : clip.decision === 'skipped'
-                                      ? 'bg-slate-800 text-slate-500 border border-slate-700'
-                                      : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                                      ? 'bg-slate-200 text-slate-500 border border-slate-300 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700'
+                                      : 'bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30'
                                 }`}
                               >
                                 {pad2(clip.index)}
                               </div>
                               <div className="truncate flex-1 min-w-0">
-                                <h4 className="text-[12px] font-bold text-slate-200 truncate">
+                                <h4 className="text-[12px] font-bold text-slate-900 dark:text-slate-200 truncate">
                                   {title}
                                 </h4>
                                 <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-0.5">
                                   <span>{durStr}</span>
-                                  <span className="text-slate-700">•</span>
+                                  <span className="text-slate-300 dark:text-slate-700">•</span>
                                   <span>{rangeStr}</span>
                                 </div>
                               </div>
@@ -2474,10 +2496,10 @@ export const SimpleClipperDashboard: React.FC = () => {
                             <div
                               className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold flex-shrink-0 ml-2 ${
                                 clip.viral_score >= 85
-                                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                  ? 'bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30'
                                   : clip.viral_score >= 70
-                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                    : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30'
+                                    : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
                               }`}
                             >
                               <FireIcon className="h-3 w-3 stroke-[2]" />
@@ -2486,7 +2508,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                           </div>
 
                           {/* Reason */}
-                          <p className="text-[11px] text-slate-400 line-clamp-2 mb-2 leading-relaxed">
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-2 mb-2 leading-relaxed">
                             {clip.reason}
                           </p>
 
@@ -2495,7 +2517,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                             <div className="flex items-center gap-1.5 mb-2 flex-wrap">
                               {clip.hook_line && (
                                 <span
-                                  className="text-[11px] font-bold text-amber-200 bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.5 rounded-md truncate max-w-full"
+                                  className="text-[11px] font-bold text-amber-800 bg-amber-100/80 border border-amber-200 dark:text-amber-200 dark:bg-amber-500/10 dark:border-amber-500/25 px-1.5 py-0.5 rounded-md truncate max-w-full"
                                   title={`Overlay detik 0-3: ${clip.hook_line}`}
                                 >
                                   ⚡ {clip.hook_line}
@@ -2503,7 +2525,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                               )}
                               {clip.series && (
                                 <span
-                                  className="text-[11px] text-violet-300 bg-violet-500/10 border border-violet-500/25 px-1.5 py-0.5 rounded-md truncate"
+                                  className="text-[11px] text-violet-700 bg-violet-50 border border-violet-200 dark:text-violet-300 dark:bg-violet-500/10 dark:border-violet-500/25 px-1.5 py-0.5 rounded-md truncate"
                                   title="Format serial"
                                 >
                                   {clip.series}
@@ -2517,7 +2539,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                             <div className="flex flex-wrap gap-1 mb-2">
                               {!clip.quality.in_target && (
                                 <span
-                                  className="text-[10px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.5 rounded-full"
+                                  className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 dark:text-amber-300 dark:bg-amber-500/10 dark:border-amber-500/25 px-1.5 py-0.5 rounded-full"
                                   title={`Ideal ${clip.quality.duration_hint} agar completion rate tinggi`}
                                 >
                                   ⏱ {Math.round(clip.quality.duration)}s
@@ -2525,7 +2547,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                               )}
                               {clip.quality.generic_risk && (
                                 <span
-                                  className="text-[10px] font-bold text-rose-300 bg-rose-500/10 border border-rose-500/25 px-1.5 py-0.5 rounded-full"
+                                  className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 dark:text-rose-300 dark:bg-rose-500/10 dark:border-rose-500/25 px-1.5 py-0.5 rounded-full"
                                   title="Caption terasa quote generik — tambahkan opini tegas atau angka"
                                 >
                                   ⚠ generik
@@ -2533,7 +2555,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                               )}
                               {clip.quality.persona_risk && (
                                 <span
-                                  className="text-[10px] font-bold text-orange-300 bg-orange-500/10 border border-orange-500/25 px-1.5 py-0.5 rounded-full"
+                                  className="text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 dark:text-orange-300 dark:bg-orange-500/10 dark:border-orange-500/25 px-1.5 py-0.5 rounded-full"
                                   title="Caption terdeteksi kaku / gaya AI — gunakan gaya bicara santai to-the-point"
                                 >
                                   🤖 kaku
@@ -2541,7 +2563,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                               )}
                               {!clip.quality.has_question && (
                                 <span
-                                  className="text-[10px] font-bold text-sky-300 bg-sky-500/10 border border-sky-500/25 px-1.5 py-0.5 rounded-full"
+                                  className="text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 dark:text-sky-300 dark:bg-sky-500/10 dark:border-sky-500/25 px-1.5 py-0.5 rounded-full"
                                   title="Caption tanpa pertanyaan penutup"
                                 >
                                   ? belum ada
@@ -2558,7 +2580,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                           {/* First comment (di-pin) */}
                           {clip.first_comment && (
                             <p
-                              className="text-[11px] text-emerald-300/80 line-clamp-1 mb-2.5"
+                              className="text-[11px] text-emerald-700 dark:text-emerald-300/80 line-clamp-1 mb-2.5"
                               title={`Komentar pertama (pin): ${clip.first_comment}`}
                             >
                               📌 {clip.first_comment}
@@ -2570,7 +2592,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                             {clip.hashtags.slice(0, 5).map((tag, i) => (
                               <span
                                 key={i}
-                                className="text-[10px] text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 rounded-full"
+                                className="text-[10px] text-cyan-700 bg-cyan-50 border border-cyan-200 dark:text-cyan-400 dark:bg-cyan-500/10 dark:border-cyan-500/20 px-1.5 py-0.5 rounded-full"
                               >
                                 {tag}
                               </span>
@@ -2584,7 +2606,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                                 e.stopPropagation();
                                 previewCandidate(clip);
                               }}
-                              className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-emerald-400 transition-colors"
+                              className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 transition-colors"
                             >
                               <PlayIcon className="h-3 w-3 stroke-[2]" />
                               <span>Preview</span>
@@ -2614,10 +2636,10 @@ export const SimpleClipperDashboard: React.FC = () => {
                                 }
                                 className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
                                   clip.decision === 'approved'
-                                    ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 hover:bg-slate-800 hover:text-slate-300 hover:border-slate-700'
+                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-300 hover:bg-slate-100 hover:text-slate-700 hover:border-slate-300 dark:bg-emerald-600/20 dark:text-emerald-400 dark:border-emerald-500/40 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:hover:border-slate-700'
                                     : clip.previewed
-                                      ? 'bg-slate-800 text-slate-300 border border-slate-700 hover:bg-emerald-600/20 hover:text-emerald-400 hover:border-emerald-500/40'
-                                      : 'bg-slate-900 text-slate-600 border border-slate-800 cursor-not-allowed'
+                                      ? 'bg-white text-slate-700 border border-slate-300 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 dark:hover:bg-emerald-600/20 dark:hover:text-emerald-400 dark:hover:border-emerald-500/40'
+                                      : 'bg-slate-100 text-slate-400 border border-slate-200 dark:bg-slate-900 dark:text-slate-600 dark:border-slate-800 cursor-not-allowed'
                                 }`}
                               >
                                 <CheckCircleIcon className="h-3.5 w-3.5 stroke-[2]" />
@@ -2642,8 +2664,8 @@ export const SimpleClipperDashboard: React.FC = () => {
                                 }}
                                 className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all ${
                                   clip.decision === 'skipped'
-                                    ? 'bg-rose-600/20 text-rose-400 border border-rose-500/40'
-                                    : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-rose-600/20 hover:text-rose-400 hover:border-rose-500/40'
+                                    ? 'bg-rose-100 text-rose-700 border border-rose-300 dark:bg-rose-600/20 dark:text-rose-400 dark:border-rose-500/40'
+                                    : 'bg-white text-slate-600 border border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 dark:hover:bg-rose-600/20 dark:hover:text-rose-400 dark:hover:border-rose-500/40'
                                 }`}
                               >
                                 <XCircleIcon className="h-3.5 w-3.5 stroke-[2]" />
@@ -2657,7 +2679,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                   </div>
 
                   {/* Bottom: Render Selected Button (Pinned) */}
-                  <div className="pt-2 border-t border-slate-800/80 flex-shrink-0 mt-2">
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80 flex-shrink-0 mt-2">
                     <button
                       onClick={handleRenderSelected}
                       disabled={isProcessing || confirmedClipCount === 0}
@@ -2692,19 +2714,19 @@ export const SimpleClipperDashboard: React.FC = () => {
                   {/* Output Dir Banner */}
                   {outputDir && (
                     <div
-                      className={`flex items-center justify-between gap-2 rounded-xl border ${themeClasses.outputBanner} p-2.5 shadow-lg bg-[#161d26] mb-2 flex-shrink-0 overflow-hidden`}
+                      className={`flex items-center justify-between gap-2 rounded-xl border ${themeClasses.outputBanner} p-2.5 shadow-xs dark:shadow-lg mb-2 flex-shrink-0 overflow-hidden`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-slate-300 border border-slate-800 flex-shrink-0">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white text-slate-600 border border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-800 flex-shrink-0">
                           <FolderOpenIcon
                             className={`h-4 w-4 stroke-[2] ${themeClasses.accentText}`}
                           />
                         </div>
                         <div className="min-w-0">
-                          <h3 className="text-xs font-bold text-slate-100 truncate">
+                          <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                             Folder Output Siap
                           </h3>
-                          <p className="text-[11px] font-mono text-slate-400 truncate">
+                          <p className="text-[11px] font-mono text-slate-600 dark:text-slate-400 truncate">
                             {outputDir}
                           </p>
                         </div>
@@ -2720,7 +2742,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                         {generatedClips.length > 0 && (
                           <button
                             onClick={() => setShowFolderModal(true)}
-                            className="rounded-xl border border-slate-700 bg-slate-800 px-2 py-1 text-[12px] font-semibold text-slate-200 hover:bg-slate-700 transition-colors flex-shrink-0 whitespace-nowrap"
+                            className="rounded-xl border border-slate-300 bg-white px-2 py-1 text-[12px] font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors flex-shrink-0 whitespace-nowrap"
                           >
                             Detail
                           </button>
@@ -2743,8 +2765,8 @@ export const SimpleClipperDashboard: React.FC = () => {
                             onClick={() => previewRenderedClip(clip)}
                             className={`flex flex-col justify-between rounded-xl border p-2.5 text-xs gap-2 transition-all cursor-pointer ${
                               isCurrentPreview
-                                ? 'border-emerald-500/70 bg-emerald-950/20 shadow-lg shadow-emerald-500/5 ring-1 ring-emerald-500/40'
-                                : 'border-slate-800/80 bg-slate-900/60 hover:border-slate-700 hover:bg-slate-900/90'
+                                ? 'border-emerald-400 bg-emerald-50/70 shadow-sm ring-1 ring-emerald-500/30 dark:border-emerald-500/70 dark:bg-emerald-950/20 dark:shadow-lg dark:shadow-emerald-500/5 dark:ring-emerald-500/40'
+                                : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800/80 dark:bg-slate-900/60 dark:hover:border-slate-700 dark:hover:bg-slate-900/90'
                             }`}
                           >
                             <div className="flex items-center gap-2.5">
@@ -2756,8 +2778,8 @@ export const SimpleClipperDashboard: React.FC = () => {
                                 }}
                                 className={`flex h-7 w-7 items-center justify-center rounded-lg border flex-shrink-0 transition-all ${
                                   isCurrentPreview
-                                    ? 'bg-emerald-500 text-black border-emerald-400 font-bold scale-105'
-                                    : 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 hover:scale-105'
+                                    ? 'bg-emerald-600 text-white border-emerald-500 dark:bg-emerald-500 dark:text-black dark:border-emerald-400 font-bold scale-105'
+                                    : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-600/20 dark:text-emerald-400 dark:border-emerald-500/30 dark:hover:bg-emerald-500/30 hover:scale-105'
                                 }`}
                                 title="Putar video clip ini di preview smartphone"
                               >
@@ -2765,17 +2787,17 @@ export const SimpleClipperDashboard: React.FC = () => {
                               </button>
                               <div className="truncate flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5">
-                                  <span className="font-mono text-[11px] font-bold text-emerald-400">
+                                  <span className="font-mono text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
                                     {pad2(i + 1)}
                                   </span>
-                                  <h4 className="font-semibold text-slate-200 truncate text-[12px]">
+                                  <h4 className="font-semibold text-slate-900 dark:text-slate-200 truncate text-[12px]">
                                     {clip.title}
                                   </h4>
                                 </div>
                                 <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-500 mt-0.5">
                                   <span>MP4 • 1080x1920</span>
                                   {isCurrentPreview && (
-                                    <span className="text-emerald-400 font-bold">
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">
                                       • Sedang Diputar
                                     </span>
                                   )}
@@ -2784,7 +2806,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                             </div>
 
                             {/* Action Bar: Preview & YouTube Upload */}
-                            <div className="flex items-center justify-between border-t border-slate-800/60 pt-1.5 gap-2">
+                            <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800/60 pt-1.5 gap-2">
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -2793,8 +2815,8 @@ export const SimpleClipperDashboard: React.FC = () => {
                                 }}
                                 className={`flex items-center gap-1 text-[11px] font-semibold transition-colors ${
                                   isCurrentPreview
-                                    ? 'text-emerald-400'
-                                    : 'text-slate-400 hover:text-emerald-400'
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : 'text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400'
                                 }`}
                               >
                                 <PlayIcon className="h-3 w-3" />
@@ -2809,11 +2831,11 @@ export const SimpleClipperDashboard: React.FC = () => {
                                     e.stopPropagation();
                                     handleOpenTikTokModal(clip);
                                   }}
-                                  className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-bold transition-all shadow-xs bg-gradient-to-r from-cyan-600/30 to-pink-600/30 hover:from-cyan-600/50 hover:to-pink-600/50 text-cyan-200 border border-cyan-500/40 active:scale-95 group"
+                                  className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-bold transition-all shadow-xs bg-gradient-to-r from-cyan-50 to-pink-50 hover:from-cyan-100 hover:to-pink-100 text-cyan-800 border border-cyan-200 dark:from-cyan-600/30 dark:to-pink-600/30 dark:hover:from-cyan-600/50 dark:hover:to-pink-600/50 dark:text-cyan-200 dark:border-cyan-500/40 active:scale-95 group"
                                   title="Buka TikTok Assistant (Salin caption & buka TikTok Studio)"
                                 >
                                   <svg
-                                    className="h-3 w-3 fill-current text-cyan-400 group-hover:text-white transition-colors"
+                                    className="h-3 w-3 fill-current text-cyan-600 group-hover:text-cyan-900 dark:text-cyan-400 dark:group-hover:text-white transition-colors"
                                     viewBox="0 0 24 24"
                                   >
                                     <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.89 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.35 0 .69.06 1 .17V9.45a6.34 6.34 0 0 0-1-.08 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.34-6.34V8.75a8.28 8.28 0 0 0 4.76 1.49V6.79a4.85 4.85 0 0 1-1-.1z" />
@@ -2829,7 +2851,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       onClick={(e) => e.stopPropagation()}
-                                      className="flex items-center gap-1 text-[11px] font-bold text-red-400 hover:text-red-300 underline"
+                                      className="flex items-center gap-1 text-[11px] font-bold text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 underline"
                                     >
                                       <svg
                                         className="h-3 w-3 text-red-500 fill-current"
@@ -2844,7 +2866,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                                         e.stopPropagation();
                                         handleOpenUploadModal(clip);
                                       }}
-                                      className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors underline"
+                                      className="text-[11px] text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 transition-colors underline"
                                       title="Posting ulang dengan judul atau setelan berbeda"
                                     >
                                       Edit
@@ -2859,8 +2881,8 @@ export const SimpleClipperDashboard: React.FC = () => {
                                     disabled={isUploading}
                                     className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold transition-all shadow-xs ${
                                       ytConnected
-                                        ? 'bg-gradient-to-r from-red-600/30 to-rose-600/30 hover:from-red-600/50 hover:to-rose-600/50 text-red-200 border border-red-500/40 active:scale-95'
-                                        : 'bg-slate-800/80 text-slate-400 border border-slate-700 hover:text-white'
+                                        ? 'bg-gradient-to-r from-red-50 to-rose-50 hover:from-red-100 hover:to-rose-100 text-red-700 border border-red-200 dark:from-red-600/30 dark:to-rose-600/30 dark:hover:from-red-600/50 dark:hover:to-rose-600/50 dark:text-red-200 dark:border-red-500/40 active:scale-95'
+                                        : 'bg-white text-slate-600 border border-slate-300 hover:text-slate-900 hover:bg-slate-100 dark:bg-slate-800/80 dark:text-slate-400 dark:border-slate-700 dark:hover:text-white'
                                     } ${isUploading ? 'opacity-50 cursor-wait' : ''}`}
                                     title={
                                       ytConnected
@@ -2897,9 +2919,9 @@ export const SimpleClipperDashboard: React.FC = () => {
 
           {/* ── BOTTOM SECTION: PERMANENT PROCESS LOG (40% SPACE) ── */}
           <div className="flex-[4] min-h-0 flex flex-col overflow-hidden pt-2 max-lg:flex-none">
-            <div className="rounded-xl border border-slate-800/90 bg-[#0d1117] overflow-hidden flex flex-col h-full max-lg:h-[260px]">
+            <div className="rounded-xl border border-slate-200/90 bg-white dark:border-slate-800/90 dark:bg-[#0d1117] shadow-sm dark:shadow-none overflow-hidden flex flex-col h-full max-lg:h-[260px]">
               {/* Terminal Window Header */}
-              <div className="flex h-8 items-center justify-between px-3.5 border-b border-slate-800/80 bg-[#161b22] flex-shrink-0">
+              <div className="flex h-8 items-center justify-between px-3.5 border-b border-slate-200/90 dark:border-slate-800/80 bg-slate-100/90 dark:bg-[#161b22] flex-shrink-0">
                 {/* Left: macOS Window Circles */}
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f56]" />
@@ -2913,29 +2935,29 @@ export const SimpleClipperDashboard: React.FC = () => {
                 <div className="flex items-center gap-2.5">
                   {(phase === 'analyzing' || phase === 'rendering') && (
                     <>
-                      <div className="w-20 sm:w-28 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                      <div className="w-20 sm:w-28 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                         <div
                           className="h-full bg-emerald-500 transition-all duration-300 rounded-full"
                           style={{ width: `${progress}%` }}
                         />
                       </div>
-                      <span className="font-mono text-[12px] font-semibold text-emerald-400">
+                      <span className="font-mono text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
                         {progress}%
                       </span>
                     </>
                   )}
                   {phase === 'complete' && (
-                    <span className="font-mono text-[12px] font-semibold text-emerald-400">
+                    <span className="font-mono text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
                       100%
                     </span>
                   )}
                   <button
                     onClick={handleCopyLogs}
-                    className="flex items-center gap-1 text-[11px] font-mono text-slate-400 hover:text-white bg-slate-800/60 px-2 py-0.5 rounded border border-slate-700 transition-colors"
+                    className="flex items-center gap-1 text-[11px] font-mono text-slate-600 hover:text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-300 hover:bg-slate-50 dark:text-slate-400 dark:hover:text-white dark:bg-slate-800/60 dark:border-slate-700 transition-colors"
                   >
                     {copiedLogs ? (
                       <>
-                        <CheckIcon className="h-3 w-3 stroke-[2] text-emerald-400" />
+                        <CheckIcon className="h-3 w-3 stroke-[2] text-emerald-600 dark:text-emerald-400" />
                         <span>Tersalin</span>
                       </>
                     ) : (
@@ -2951,33 +2973,35 @@ export const SimpleClipperDashboard: React.FC = () => {
               {/* Terminal Monospace Logs Output */}
               <div
                 ref={terminalRef}
-                className="flex-1 p-3 font-mono text-[12px] leading-relaxed text-[#f59e0b] overflow-y-auto space-y-1 select-text bg-[#0d1117]"
+                className="flex-1 p-3 font-mono text-[12px] leading-relaxed text-amber-700 dark:text-[#f59e0b] overflow-y-auto space-y-1 select-text bg-slate-50/70 dark:bg-[#0d1117]"
               >
                 {logs.map((line, idx) => {
-                  let colorClass = 'text-[#f59e0b]';
+                  let colorClass = 'text-amber-700 dark:text-[#f59e0b]';
                   if (
                     line.includes('✅') ||
                     line.includes('Selesai') ||
                     line.includes('complete')
                   ) {
-                    colorClass = 'text-emerald-400 font-semibold';
+                    colorClass = 'text-emerald-700 dark:text-emerald-400 font-semibold';
                   } else if (
                     line.includes('❌') ||
                     line.includes('failed') ||
                     line.includes('Error')
                   ) {
-                    colorClass = 'text-rose-400 font-semibold';
+                    colorClass = 'text-rose-600 dark:text-rose-400 font-semibold';
                   } else if (line.includes('Progress')) {
-                    colorClass = 'text-sky-300';
+                    colorClass = 'text-sky-700 dark:text-sky-300';
                   } else if (line.includes('SYSTEM')) {
-                    colorClass = 'text-slate-300';
+                    colorClass = 'text-slate-700 dark:text-slate-300';
                   }
 
                   return (
                     <div key={idx} className={`break-all ${colorClass}`}>
                       {line.startsWith('[') ? (
                         <span>
-                          <span className="text-slate-500">{line.slice(0, 10)}</span>
+                          <span className="text-slate-400 dark:text-slate-500">
+                            {line.slice(0, 10)}
+                          </span>
                           <span>{line.slice(10)}</span>
                         </span>
                       ) : (
@@ -2995,7 +3019,7 @@ export const SimpleClipperDashboard: React.FC = () => {
       {/* Generated Clips Detail Modal */}
       {showFolderModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 dark:bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setShowFolderModal(false);
           }}
@@ -3006,26 +3030,31 @@ export const SimpleClipperDashboard: React.FC = () => {
             aria-modal="true"
             aria-labelledby="folder-modal-title"
             tabIndex={-1}
-            className="w-full max-w-md rounded-2xl bg-slate-900 p-5 shadow-2xl border border-slate-800 text-slate-100 outline-none"
+            className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 outline-none"
           >
-            <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+            <div className="flex items-center justify-between mb-3 border-b border-slate-200 dark:border-slate-800 pb-2">
               <div className="flex items-center gap-2">
                 <FolderIcon className={`h-4 w-4 stroke-[2] ${themeClasses.accentText}`} />
-                <h3 id="folder-modal-title" className="text-sm font-bold text-white">
+                <h3
+                  id="folder-modal-title"
+                  className="text-sm font-bold text-slate-900 dark:text-white"
+                >
                   Daftar Klip Dihasilkan
                 </h3>
               </div>
               <button
                 onClick={() => setShowFolderModal(false)}
                 aria-label="Tutup"
-                className="text-slate-400 hover:text-white text-xs p-1 rounded-md hover:bg-slate-800 transition-colors"
+                className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white text-xs p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 <XMarkIcon className="h-4 w-4 stroke-[2]" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-300 mb-2">Klip tersimpan di direktori:</p>
-            <div className="rounded-lg bg-slate-950 p-2.5 font-mono text-[12px] text-emerald-400 break-all mb-4 border border-slate-800 select-all">
+            <p className="text-xs text-slate-600 dark:text-slate-300 mb-2">
+              Klip tersimpan di direktori:
+            </p>
+            <div className="rounded-lg bg-slate-50 dark:bg-slate-950 p-2.5 font-mono text-[12px] text-emerald-700 dark:text-emerald-400 break-all mb-4 border border-slate-200 dark:border-slate-800 select-all">
               {outputDir}
             </div>
 
@@ -3033,11 +3062,11 @@ export const SimpleClipperDashboard: React.FC = () => {
               {generatedClips.map((c, i) => (
                 <div
                   key={c.id}
-                  className="flex items-center justify-between text-xs py-2 px-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80"
+                  className="flex items-center justify-between text-xs py-2 px-2.5 rounded-lg bg-slate-50/80 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80"
                 >
                   <div className="flex items-center gap-2 truncate pr-2">
-                    <DocumentTextIcon className="h-4 w-4 stroke-[2] text-slate-400 flex-shrink-0" />
-                    <span className="truncate text-slate-200 font-medium">
+                    <DocumentTextIcon className="h-4 w-4 stroke-[2] text-slate-500 dark:text-slate-400 flex-shrink-0" />
+                    <span className="truncate text-slate-800 dark:text-slate-200 font-medium">
                       {pad2(i + 1)}_{c.title}
                     </span>
                   </div>
@@ -3047,10 +3076,10 @@ export const SimpleClipperDashboard: React.FC = () => {
                         setShowFolderModal(false);
                         previewRenderedClip(c);
                       }}
-                      className="text-[11px] bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/30 font-semibold transition-all active:scale-95 flex items-center gap-1"
+                      className="text-[11px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-600/20 dark:hover:bg-emerald-600/30 dark:text-emerald-300 px-2 py-0.5 rounded border dark:border-emerald-500/30 font-semibold transition-all active:scale-95 flex items-center gap-1"
                       title="Putar video di preview smartphone"
                     >
-                      <PlayIcon className="h-3 w-3 text-emerald-400" />
+                      <PlayIcon className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
                       <span>Preview</span>
                     </button>
                     <button
@@ -3058,7 +3087,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                         setShowFolderModal(false);
                         handleOpenTikTokModal(c);
                       }}
-                      className="text-[11px] bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/30 font-semibold transition-all active:scale-95 flex items-center gap-1"
+                      className="text-[11px] bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-600/20 dark:hover:bg-cyan-600/30 dark:text-cyan-300 px-2 py-0.5 rounded border dark:border-cyan-500/30 font-semibold transition-all active:scale-95 flex items-center gap-1"
                       title="Posting klip ini ke TikTok"
                     >
                       <span>🎵</span>
@@ -3069,7 +3098,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                         href={uploadedYtLinks[c.id]}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[11px] text-red-400 hover:text-red-300 font-bold underline flex items-center gap-0.5"
+                        className="text-[11px] text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-bold underline flex items-center gap-0.5"
                       >
                         <VideoCameraIcon className="h-3 w-3" />
                         <span>YouTube ↗</span>
@@ -3080,14 +3109,16 @@ export const SimpleClipperDashboard: React.FC = () => {
                           setShowFolderModal(false);
                           handleOpenUploadModal(c);
                         }}
-                        className="text-[11px] bg-red-600/20 hover:bg-red-600/30 text-red-300 px-2 py-0.5 rounded border border-red-500/30 font-semibold transition-all active:scale-95 flex items-center gap-1"
+                        className="text-[11px] bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-600/20 dark:hover:bg-red-600/30 dark:text-red-300 px-2 py-0.5 rounded border dark:border-red-500/30 font-semibold transition-all active:scale-95 flex items-center gap-1"
                         title="Posting klip ini ke YouTube Shorts"
                       >
-                        <VideoCameraIcon className="h-3 w-3 text-red-400" />
+                        <VideoCameraIcon className="h-3 w-3 text-red-600 dark:text-red-400" />
                         <span>Post ke YT</span>
                       </button>
                     )}
-                    <span className="font-mono text-emerald-400 text-[11px]">Ready</span>
+                    <span className="font-mono text-emerald-600 dark:text-emerald-400 text-[11px]">
+                      Ready
+                    </span>
                   </div>
                 </div>
               ))}
@@ -3096,7 +3127,7 @@ export const SimpleClipperDashboard: React.FC = () => {
             <div className="flex justify-between items-center">
               <button
                 onClick={handleOpenFolder}
-                className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-semibold"
+                className="flex items-center gap-1.5 text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 font-semibold"
               >
                 <FolderOpenIcon className="h-4 w-4 stroke-[2]" />
                 <span>Buka di Finder/Explorer</span>
@@ -3115,7 +3146,7 @@ export const SimpleClipperDashboard: React.FC = () => {
       {/* Server Shutdown Confirmation Modal */}
       {serverModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 dark:bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setServerModalOpen(false);
           }}
@@ -3127,19 +3158,22 @@ export const SimpleClipperDashboard: React.FC = () => {
             aria-labelledby="server-modal-title"
             aria-describedby="server-modal-desc"
             tabIndex={-1}
-            className="w-80 rounded-2xl bg-slate-900 p-5 shadow-2xl border border-slate-800 text-slate-100 outline-none"
+            className="w-80 rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 outline-none"
           >
-            <h3 id="server-modal-title" className="text-sm font-bold text-white mb-2">
+            <h3
+              id="server-modal-title"
+              className="text-sm font-bold text-slate-900 dark:text-white mb-2"
+            >
               Matikan Server?
             </h3>
-            <p id="server-modal-desc" className="text-xs text-slate-400 mb-4">
+            <p id="server-modal-desc" className="text-xs text-slate-600 dark:text-slate-400 mb-4">
               Apakah Anda yakin ingin mematikan VisionClipper Studio background server?
             </p>
             <div className="flex justify-end gap-2">
               <button
                 data-autofocus
                 onClick={() => setServerModalOpen(false)}
-                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-400 hover:bg-slate-800 hover:text-white"
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
               >
                 Batal
               </button>
@@ -3159,7 +3193,7 @@ export const SimpleClipperDashboard: React.FC = () => {
          ───────────────────────────────────────────────────────────── */}
       {ttModalOpen && selectedClipForTt && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 dark:bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setTtModalOpen(false);
           }}
@@ -3170,27 +3204,30 @@ export const SimpleClipperDashboard: React.FC = () => {
             aria-modal="true"
             aria-labelledby="tt-modal-title"
             tabIndex={-1}
-            className="w-full max-w-lg rounded-2xl bg-slate-900 p-6 max-sm:p-4 shadow-2xl border border-slate-800 text-slate-100 flex flex-col max-h-[90vh] overflow-y-auto outline-none"
+            className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 p-6 max-sm:p-4 shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 flex flex-col max-h-[90vh] overflow-y-auto outline-none"
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/20 to-pink-500/20 text-cyan-300 border border-cyan-500/30">
-                  <svg className="h-4.5 w-4.5 fill-current text-cyan-400" viewBox="0 0 24 24">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-50 to-pink-50 text-cyan-700 border border-cyan-200 dark:from-cyan-500/20 dark:to-pink-500/20 dark:text-cyan-300 dark:border-cyan-500/30">
+                  <svg
+                    className="h-4.5 w-4.5 fill-current text-cyan-600 dark:text-cyan-400"
+                    viewBox="0 0 24 24"
+                  >
                     <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.89 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.35 0 .69.06 1 .17V9.45a6.34 6.34 0 0 0-1-.08 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.34-6.34V8.75a8.28 8.28 0 0 0 4.76 1.49V6.79a4.85 4.85 0 0 1-1-.1z" />
                   </svg>
                 </div>
                 <div>
                   <h3
                     id="tt-modal-title"
-                    className="text-sm font-bold text-white flex items-center gap-2"
+                    className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2"
                   >
                     Quick Post ke TikTok
-                    <span className="rounded-full bg-cyan-600/30 px-2 py-0.5 text-[11px] font-bold text-cyan-300 border border-cyan-500/30">
+                    <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-[11px] font-bold text-cyan-700 border border-cyan-200 dark:bg-cyan-600/30 dark:text-cyan-300 dark:border-cyan-500/30">
                       TikTok Creator Center
                     </span>
                   </h3>
-                  <p className="text-[12px] text-slate-400">
+                  <p className="text-[12px] text-slate-600 dark:text-slate-400">
                     Salin caption, lalu pilih video secara manual di halaman upload TikTok
                   </p>
                 </div>
@@ -3198,37 +3235,37 @@ export const SimpleClipperDashboard: React.FC = () => {
               <button
                 onClick={() => setTtModalOpen(false)}
                 aria-label="Tutup"
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white transition-colors"
               >
                 <XMarkIcon className="h-4 w-4" />
               </button>
             </div>
 
             {/* Step-by-Step Guide Banner */}
-            <div className="rounded-xl bg-slate-950/80 border border-slate-800 p-3.5 mb-4 text-xs space-y-2">
-              <div className="font-bold text-slate-200 flex items-center gap-2">
+            <div className="rounded-xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 p-3.5 mb-4 text-xs space-y-2">
+              <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500 text-black font-extrabold text-[11px]">
                   1
                 </span>
                 <span>Klik tombol di bawah untuk menyalin caption dan membuka TikTok Studio</span>
               </div>
-              <div className="font-bold text-slate-200 flex items-center gap-2">
+              <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500 text-black font-extrabold text-[11px]">
                   2
                 </span>
                 <span>Pilih file video secara manual dari halaman upload TikTok</span>
               </div>
-              <div className="font-bold text-slate-200 flex items-center gap-2">
+              <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500 text-black font-extrabold text-[11px]">
                   3
                 </span>
                 <span>
                   Tekan{' '}
-                  <kbd className="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-cyan-300 font-mono text-[11px]">
+                  <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 text-cyan-700 dark:bg-slate-800 dark:border-slate-700 rounded dark:text-cyan-300 font-mono text-[11px]">
                     Ctrl+V
                   </kbd>{' '}
                   /{' '}
-                  <kbd className="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-cyan-300 font-mono text-[11px]">
+                  <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 text-cyan-700 dark:bg-slate-800 dark:border-slate-700 rounded dark:text-cyan-300 font-mono text-[11px]">
                     Cmd+V
                   </kbd>{' '}
                   (Caption & Hashtag otomatis ter-paste)
@@ -3239,7 +3276,7 @@ export const SimpleClipperDashboard: React.FC = () => {
             {/* Caption & Hashtag Preview Area */}
             <div className="space-y-3 mb-4">
               <div className="flex justify-between items-center">
-                <label className="text-[12px] font-bold uppercase tracking-wider text-slate-300">
+                <label className="text-[12px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                   Caption & Hashtag TikTok (Otomatis Disalin)
                 </label>
                 <button
@@ -3249,12 +3286,14 @@ export const SimpleClipperDashboard: React.FC = () => {
                     setTtCopied(true);
                     setTimeout(() => setTtCopied(false), 2500);
                   }}
-                  className="flex items-center gap-1 text-[12px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
+                  className="flex items-center gap-1 text-[12px] font-semibold text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 dark:hover:text-cyan-300 transition-colors"
                 >
                   {ttCopied ? (
                     <>
-                      <CheckIcon className="h-3.5 w-3.5 text-emerald-400" />
-                      <span className="text-emerald-400">Tersalin ke Clipboard!</span>
+                      <CheckIcon className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        Tersalin ke Clipboard!
+                      </span>
                     </>
                   ) : (
                     <>
@@ -3269,14 +3308,14 @@ export const SimpleClipperDashboard: React.FC = () => {
                 rows={4}
                 value={ttFormTitle}
                 onChange={(e) => setTtFormTitle(e.target.value)}
-                className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 resize-none font-medium leading-relaxed"
+                className="w-full rounded-xl border border-slate-300 bg-slate-50 p-3 text-xs text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 resize-none font-medium leading-relaxed"
                 placeholder="Tulis caption dan hashtags TikTok..."
               />
 
               {/* Pinned first comment — inti strategi "hidupkan komen 1 jam pertama" */}
-              <div className="rounded-xl border border-emerald-500/25 bg-emerald-950/20 p-3">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 dark:border-emerald-500/25 dark:bg-emerald-950/20 p-3">
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                     📌 Komentar Pertama (Pin & Balas Sendiri)
                   </label>
                   <button
@@ -3287,11 +3326,11 @@ export const SimpleClipperDashboard: React.FC = () => {
                       setTtCommentCopied(true);
                       setTimeout(() => setTtCommentCopied(false), 2500);
                     }}
-                    className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+                    className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition-colors"
                   >
                     {ttCommentCopied ? (
                       <>
-                        <CheckIcon className="h-3 w-3 text-emerald-400" />
+                        <CheckIcon className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
                         <span>Tersalin!</span>
                       </>
                     ) : (
@@ -3306,29 +3345,29 @@ export const SimpleClipperDashboard: React.FC = () => {
                   rows={2}
                   value={ttFirstComment}
                   onChange={(e) => setTtFirstComment(e.target.value)}
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950 p-2 text-[12px] text-emerald-100 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none leading-relaxed"
+                  className="w-full rounded-lg border border-slate-300 bg-white p-2 text-[12px] text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-emerald-100 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none leading-relaxed"
                   placeholder="Komentar yang di-pin setelah upload (biar kolom komen hidup di 1 jam pertama)..."
                 />
               </div>
 
               {/* Checklist perilaku upload — pengingat, bukan otomatis */}
-              <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/70 p-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
                   Sebelum posting
                 </div>
-                <ul className="space-y-1 text-[12px] text-slate-400">
+                <ul className="space-y-1 text-[12px] text-slate-600 dark:text-slate-400">
                   <li className="flex items-start gap-1.5">
-                    <span className="text-emerald-400 flex-shrink-0">•</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 flex-shrink-0">•</span>
                     <span>Upload 1 video per hari jam 19.00–21.00 WIB, jangan borongan.</span>
                   </li>
                   <li className="flex items-start gap-1.5">
-                    <span className="text-emerald-400 flex-shrink-0">•</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 flex-shrink-0">•</span>
                     <span>
                       Setelah posting: pin komentar di atas, lalu balas semua komen 1 jam pertama.
                     </span>
                   </li>
                   <li className="flex items-start gap-1.5">
-                    <span className="text-emerald-400 flex-shrink-0">•</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 flex-shrink-0">•</span>
                     <span>
                       Pin 3 video terbaik di profil, termasuk yang paling tinggi views-nya.
                     </span>
@@ -3338,12 +3377,12 @@ export const SimpleClipperDashboard: React.FC = () => {
             </div>
 
             {/* Modal Footer Actions */}
-            <div className="flex items-center justify-end pt-2 border-t border-slate-800 gap-2">
+            <div className="flex items-center justify-end pt-2 border-t border-slate-200 dark:border-slate-800 gap-2">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setTtModalOpen(false)}
-                  className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition-colors"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
                 >
                   Tutup
                 </button>
@@ -3351,7 +3390,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleLaunchTikTokUpload}
-                  className="flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold text-black bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 shadow-lg shadow-cyan-950/40 transition-all active:scale-95"
+                  className="flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold text-black bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 shadow-lg shadow-cyan-500/20 dark:shadow-cyan-950/40 transition-all active:scale-95"
                 >
                   <span>🚀 Salin & Buka TikTok Studio ↗</span>
                 </button>
@@ -3366,7 +3405,7 @@ export const SimpleClipperDashboard: React.FC = () => {
          ───────────────────────────────────────────────────────────── */}
       {ytModalOpen && selectedClipForYt && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 dark:bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) closeYtModal();
           }}
@@ -3377,12 +3416,12 @@ export const SimpleClipperDashboard: React.FC = () => {
             aria-modal="true"
             aria-labelledby="yt-modal-title"
             tabIndex={-1}
-            className="w-full max-w-lg rounded-2xl bg-slate-900 p-6 max-sm:p-4 shadow-2xl border border-slate-800 text-slate-100 flex flex-col max-h-[90vh] overflow-y-auto outline-none"
+            className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 p-6 max-sm:p-4 shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 flex flex-col max-h-[90vh] overflow-y-auto outline-none"
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-600/20 text-red-500 border border-red-500/30">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 border border-red-200 dark:bg-red-600/20 dark:text-red-500 dark:border-red-500/30">
                   <svg className="h-5 w-5 text-red-500 fill-current" viewBox="0 0 24 24">
                     <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
                   </svg>
@@ -3390,14 +3429,14 @@ export const SimpleClipperDashboard: React.FC = () => {
                 <div>
                   <h3
                     id="yt-modal-title"
-                    className="text-sm font-bold text-white flex items-center gap-2"
+                    className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2"
                   >
                     Konfirmasi Posting ke YouTube
-                    <span className="rounded-full bg-red-600/30 px-2 py-0.5 text-[11px] font-bold text-red-300 border border-red-500/30">
+                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-700 border border-red-200 dark:bg-red-600/30 dark:text-red-300 dark:border-red-500/30">
                       Shorts 9:16
                     </span>
                   </h3>
-                  <p className="text-[12px] text-slate-400">
+                  <p className="text-[12px] text-slate-600 dark:text-slate-400">
                     Tinjau detail video sebelum dipublikasikan langsung ke channel Anda
                   </p>
                 </div>
@@ -3406,7 +3445,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                 disabled={ytUploadProgress === 'uploading'}
                 onClick={closeYtModal}
                 aria-label="Tutup"
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-30"
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white transition-colors disabled:opacity-30"
               >
                 <XMarkIcon className="h-4 w-4" />
               </button>
@@ -3414,7 +3453,7 @@ export const SimpleClipperDashboard: React.FC = () => {
 
             {/* Target Channel Pill/Card */}
             {ytChannel && (
-              <div className="flex items-center justify-between rounded-xl bg-slate-950/80 border border-slate-800 p-3 mb-4">
+              <div className="flex items-center justify-between rounded-xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 p-3 mb-4">
                 <div className="flex items-center gap-3">
                   {ytChannel.thumbnail && !ytAvatarFailed ? (
                     <img
@@ -3424,30 +3463,32 @@ export const SimpleClipperDashboard: React.FC = () => {
                       className="h-9 w-9 rounded-full border border-red-500/40 object-cover"
                     />
                   ) : (
-                    <div className="h-9 w-9 rounded-full bg-red-600/20 flex items-center justify-center text-red-400 font-bold text-xs">
+                    <div className="h-9 w-9 rounded-full bg-red-100 dark:bg-red-600/20 flex items-center justify-center text-red-700 dark:text-red-400 font-bold text-xs">
                       YT
                     </div>
                   )}
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-white">{ytChannel.title}</span>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white">
+                        {ytChannel.title}
+                      </span>
                       {ytChannel.customUrl && (
-                        <span className="text-[11px] text-slate-400 font-mono">
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                           {ytChannel.customUrl}
                         </span>
                       )}
                     </div>
-                    <span className="text-[11px] text-emerald-400 flex items-center gap-1 font-medium">
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                       Channel Terhubung & Siap Posting
                     </span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="text-[11px] text-slate-400 block">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
                     Klip #{selectedClipForYt.id}
                   </span>
-                  <span className="text-[11px] font-mono text-emerald-400 font-semibold">
+                  <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
                     1080x1920 Vertikal
                   </span>
                 </div>
@@ -3456,17 +3497,23 @@ export const SimpleClipperDashboard: React.FC = () => {
 
             {/* Success State */}
             {ytUploadProgress === 'success' && ytUploadResult && (
-              <div className="rounded-xl bg-emerald-950/40 border border-emerald-500/40 p-5 text-center my-2 animate-in zoom-in-95 duration-200">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 mb-3">
+              <div className="rounded-xl bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-500/40 p-5 text-center my-2 animate-in zoom-in-95 duration-200">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 border border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/40 mb-3">
                   <CheckCircleIcon className="h-7 w-7" />
                 </div>
-                <h4 className="text-sm font-bold text-emerald-300 mb-1">
+                <h4 className="text-sm font-bold text-emerald-800 dark:text-emerald-300 mb-1">
                   🎉 Video Berhasil Diposting ke YouTube!
                 </h4>
-                <p className="text-[12px] text-slate-300 mb-4">
+                <p className="text-[12px] text-slate-700 dark:text-slate-300 mb-4">
                   Video Anda kini telah terunggah ke channel{' '}
-                  <span className="font-semibold text-white">{ytChannel?.title}</span> dengan status{' '}
-                  <span className="font-bold text-emerald-300 uppercase">{ytFormPrivacy}</span>.
+                  <span className="font-semibold text-slate-900 dark:text-white">
+                    {ytChannel?.title}
+                  </span>{' '}
+                  dengan status{' '}
+                  <span className="font-bold text-emerald-700 dark:text-emerald-300 uppercase">
+                    {ytFormPrivacy}
+                  </span>
+                  .
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-2 justify-center mb-3">
@@ -3483,7 +3530,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                     href={ytUploadResult.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 transition-colors"
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 px-3 py-2 text-xs font-semibold dark:text-slate-300 transition-colors"
                   >
                     <span>Link Reguler ↗</span>
                   </a>
@@ -3494,7 +3541,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                     setYtModalOpen(false);
                     setYtUploadProgress('idle');
                   }}
-                  className="text-xs text-slate-400 hover:text-white underline pt-1"
+                  className="text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white underline pt-1"
                 >
                   Tutup Dialog
                 </button>
@@ -3506,7 +3553,7 @@ export const SimpleClipperDashboard: React.FC = () => {
               <div className="space-y-4">
                 {/* Privacy Selector with "Posting Langsung (Publik)" Highlight */}
                 <div>
-                  <label className="block text-[12px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                  <label className="block text-[12px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
                     Pilih Status Privasi / Mode Posting
                   </label>
                   <div className="grid grid-cols-3 gap-2">
@@ -3516,8 +3563,8 @@ export const SimpleClipperDashboard: React.FC = () => {
                       onClick={() => setYtFormPrivacy('public')}
                       className={`flex flex-col p-2.5 rounded-xl border text-left transition-all ${
                         ytFormPrivacy === 'public'
-                          ? 'border-emerald-500/60 bg-emerald-950/40 text-emerald-300 shadow-md ring-1 ring-emerald-500/30'
-                          : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500/30 dark:border-emerald-500/60 dark:bg-emerald-950/40 dark:text-emerald-300 shadow-md'
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400 dark:hover:border-slate-700'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -3538,8 +3585,8 @@ export const SimpleClipperDashboard: React.FC = () => {
                       onClick={() => setYtFormPrivacy('unlisted')}
                       className={`flex flex-col p-2.5 rounded-xl border text-left transition-all ${
                         ytFormPrivacy === 'unlisted'
-                          ? 'border-cyan-500/60 bg-cyan-950/40 text-cyan-300 shadow-md ring-1 ring-cyan-500/30'
-                          : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+                          ? 'border-cyan-500 bg-cyan-50 text-cyan-800 ring-1 ring-cyan-500/30 dark:border-cyan-500/60 dark:bg-cyan-950/40 dark:text-cyan-300 shadow-md'
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400 dark:hover:border-slate-700'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -3562,8 +3609,8 @@ export const SimpleClipperDashboard: React.FC = () => {
                       onClick={() => setYtFormPrivacy('private')}
                       className={`flex flex-col p-2.5 rounded-xl border text-left transition-all ${
                         ytFormPrivacy === 'private'
-                          ? 'border-amber-500/60 bg-amber-950/40 text-amber-300 shadow-md ring-1 ring-amber-500/30'
-                          : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+                          ? 'border-amber-500 bg-amber-50 text-amber-800 ring-1 ring-amber-500/30 dark:border-amber-500/60 dark:bg-amber-950/40 dark:text-amber-300 shadow-md'
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400 dark:hover:border-slate-700'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -3587,12 +3634,12 @@ export const SimpleClipperDashboard: React.FC = () => {
                   <div className="flex justify-between items-center mb-1">
                     <label
                       htmlFor="yt-title-input"
-                      className="text-[12px] font-bold uppercase tracking-wider text-slate-300"
+                      className="text-[12px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
                     >
                       Judul Video (Shorts Title)
                     </label>
                     <span
-                      className={`text-[11px] font-mono ${ytFormTitle.length > 95 ? 'text-amber-400' : 'text-slate-500'}`}
+                      className={`text-[11px] font-mono ${ytFormTitle.length > 95 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500'}`}
                     >
                       {ytFormTitle.length}/100
                     </span>
@@ -3609,24 +3656,28 @@ export const SimpleClipperDashboard: React.FC = () => {
                     }}
                     aria-invalid={Boolean(ytTitleError)}
                     aria-describedby={ytTitleError ? 'yt-title-error' : undefined}
-                    className={`w-full rounded-xl border bg-slate-950 px-3 py-2 text-xs text-white focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 font-medium ${
-                      ytTitleError ? 'border-rose-500/70' : 'border-slate-800'
+                    className={`w-full rounded-xl border bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 font-medium ${
+                      ytTitleError ? 'border-rose-500/70' : 'border-slate-300 dark:border-slate-800'
                     }`}
                     placeholder="Masukkan judul video Shorts..."
                   />
                   {ytTitleError && (
-                    <p id="yt-title-error" role="alert" className="mt-1 text-[12px] text-rose-400">
+                    <p
+                      id="yt-title-error"
+                      role="alert"
+                      className="mt-1 text-[12px] text-rose-600 dark:text-rose-400"
+                    >
                       {ytTitleError}
                     </p>
                   )}
                   <div className="flex items-center justify-between mt-1 text-[11px] text-slate-500">
                     <span>Format vertikal 9:16 Shorts</span>
-                    <label className="flex items-center gap-1 cursor-pointer hover:text-slate-400">
+                    <label className="flex items-center gap-1 cursor-pointer hover:text-slate-700 dark:hover:text-slate-400">
                       <input
                         type="checkbox"
                         checked={ytFormAutoShortsTag}
                         onChange={(e) => setYtFormAutoShortsTag(e.target.checked)}
-                        className="rounded border-slate-700 text-red-500 focus:ring-0 h-3 w-3"
+                        className="rounded border-slate-300 dark:border-slate-700 text-red-500 focus:ring-0 h-3 w-3"
                       />
                       <span>Tambahkan #Shorts di judul</span>
                     </label>
@@ -3635,7 +3686,7 @@ export const SimpleClipperDashboard: React.FC = () => {
 
                 {/* Description input */}
                 <div>
-                  <label className="block text-[12px] font-bold uppercase tracking-wider text-slate-300 mb-1">
+                  <label className="block text-[12px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
                     Deskripsi & Hashtags
                   </label>
                   <textarea
@@ -3643,7 +3694,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                     value={ytFormDescription}
                     disabled={ytUploadProgress === 'uploading'}
                     onChange={(e) => setYtFormDescription(e.target.value)}
-                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 resize-none font-mono"
+                    className="w-full rounded-xl border border-slate-300 bg-slate-50 dark:border-slate-800 dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-slate-200 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 resize-none font-mono"
                     placeholder="Tulis deskripsi video..."
                   />
                 </div>
@@ -3651,14 +3702,14 @@ export const SimpleClipperDashboard: React.FC = () => {
                 {/* Tags chips */}
                 {ytFormTags.length > 0 && (
                   <div>
-                    <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    <span className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
                       Tags Terkait
                     </span>
                     <div className="flex flex-wrap gap-1">
                       {ytFormTags.map((tag, idx) => (
                         <span
                           key={idx}
-                          className="rounded-md bg-slate-800 px-2 py-0.5 text-[11px] font-mono text-slate-300 border border-slate-700/60"
+                          className="rounded-md bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-mono dark:text-slate-300 border dark:border-slate-700/60"
                         >
                           #{tag}
                         </span>
@@ -3669,8 +3720,8 @@ export const SimpleClipperDashboard: React.FC = () => {
 
                 {/* Error Banner */}
                 {ytUploadProgress === 'error' && (
-                  <div className="rounded-xl bg-red-950/50 border border-red-500/50 p-3 text-xs text-red-300 flex items-start gap-2">
-                    <XCircleIcon className="h-4 w-4 text-red-400 flex-shrink-0 mt-0.5" />
+                  <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/50 dark:border-red-500/50 p-3 text-xs dark:text-red-300 flex items-start gap-2">
+                    <XCircleIcon className="h-4 w-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                     <div>
                       <span className="font-bold block">Gagal mengunggah video:</span>
                       <span className="text-[12px] opacity-90">{ytUploadErrorMessage}</span>
@@ -3679,7 +3730,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                 )}
 
                 {/* Action Buttons with Direct Confirmation Button */}
-                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-200 dark:border-slate-800">
                   <button
                     type="button"
                     disabled={ytUploadProgress === 'uploading'}
@@ -3687,7 +3738,7 @@ export const SimpleClipperDashboard: React.FC = () => {
                       setYtModalOpen(false);
                       setYtUploadProgress('idle');
                     }}
-                    className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-40"
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors disabled:opacity-40"
                   >
                     Batal
                   </button>
@@ -3698,10 +3749,10 @@ export const SimpleClipperDashboard: React.FC = () => {
                     onClick={handleConfirmUploadToYouTube}
                     className={`flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold text-white shadow-lg transition-all active:scale-95 ${
                       ytFormPrivacy === 'public'
-                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-950/50'
+                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-950/20 dark:shadow-emerald-950/50'
                         : ytFormPrivacy === 'unlisted'
-                          ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-cyan-950/50'
-                          : 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-red-950/50'
+                          ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-cyan-950/20 dark:shadow-cyan-950/50'
+                          : 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-red-950/20 dark:shadow-red-950/50'
                     } ${ytUploadProgress === 'uploading' ? 'opacity-75 cursor-wait' : ''}`}
                   >
                     <VideoCameraIcon
@@ -3801,17 +3852,17 @@ export const SimpleClipperDashboard: React.FC = () => {
       {toast && (
         <aside
           aria-live="polite"
-          className="fixed bottom-6 right-6 z-50 flex items-start gap-3 p-4 rounded-2xl bg-[#161d27]/95 border border-slate-700/80 shadow-[0_20px_50px_rgba(0,0,0,0.85)] backdrop-blur-xl max-w-sm w-full animate-in slide-in-from-bottom-5 fade-in duration-300 max-lg:bottom-4 max-lg:right-4 max-lg:left-4 max-lg:w-auto"
+          className="fixed bottom-6 right-6 z-50 flex items-start gap-3 p-4 rounded-2xl bg-white/95 dark:bg-[#161d27]/95 border border-slate-200 dark:border-slate-700/80 shadow-xl dark:shadow-[0_20px_50px_rgba(0,0,0,0.85)] backdrop-blur-xl max-w-sm w-full animate-in slide-in-from-bottom-5 fade-in duration-300 max-lg:bottom-4 max-lg:right-4 max-lg:left-4 max-lg:w-auto"
         >
           <div
             className={`flex h-9 w-9 items-center justify-center rounded-xl flex-shrink-0 ${
               toast.type === 'success'
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                ? 'bg-emerald-50 text-emerald-600 border border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30'
                 : toast.type === 'error'
-                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                  ? 'bg-rose-50 text-rose-600 border border-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:border-rose-500/30'
                   : toast.type === 'warning'
-                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                    : 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                    ? 'bg-amber-50 text-amber-600 border border-amber-200 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30'
+                    : 'bg-sky-50 text-sky-600 border border-sky-200 dark:bg-sky-500/20 dark:text-sky-400 dark:border-sky-500/30'
             }`}
           >
             {toast.type === 'success' ? (
@@ -3826,15 +3877,17 @@ export const SimpleClipperDashboard: React.FC = () => {
           </div>
 
           <div className="flex-1 pt-0.5">
-            <h4 className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+            <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
               <span>{toast.title}</span>
             </h4>
-            <p className="text-[12px] text-slate-300/90 leading-relaxed mt-0.5">{toast.message}</p>
+            <p className="text-[12px] text-slate-600 dark:text-slate-300/90 leading-relaxed mt-0.5">
+              {toast.message}
+            </p>
           </div>
 
           <button
             onClick={() => setToast(null)}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors flex-shrink-0 -mr-1 -mt-1 cursor-pointer"
+            className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex-shrink-0 -mr-1 -mt-1 cursor-pointer"
             aria-label="Tutup notifikasi"
           >
             <XMarkIcon className="h-4 w-4" />

@@ -1,5 +1,11 @@
 export type FramingMode = 'smart_crop' | 'fit_blur' | 'split_screen';
 
+export interface SmartCropShotMode {
+  start: number;
+  end: number;
+  mode: 'smart_crop' | 'fit_blur';
+}
+
 export interface SmartCropTrajectory {
   fps: number;
   orig_w: number;
@@ -9,9 +15,12 @@ export interface SmartCropTrajectory {
   crop_y: number;
   positions: number[];
   cut_frames: number[];
+  shot_modes?: SmartCropShotMode[];
+  fit_blur_zoom?: number;
   /** Padded clip start/end returned by the backend (used to map position index). */
   start?: number;
   end?: number;
+  first_pts?: number;
 }
 
 export type SubtitleAnimation =
